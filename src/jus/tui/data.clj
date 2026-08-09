@@ -18,7 +18,7 @@
               {:label "List of Clojure-likes"
                :desc  "Compiled list of Clojure dialects"
                :url   "https://github.com/chr15m/awesome-clojure-likes"}
-              {:label "Clojure & Co"
+              {:label "ClojureStar"
                :desc  "Compiled list of Clojure dialects, with REPLs"
                :url   "https://clojure.cc/"}]}
 
@@ -146,7 +146,7 @@
       :desc  "Interactive exercises with mentoring"
       :url   "https://exercism.org/tracks/clojure"}
 
-     {:label "4Clojure"
+     {:label "4ever-clojure"
       :desc  "Classic Clojure programming exercises"
       :url   "https://4clojure.oxal.org"}
 
