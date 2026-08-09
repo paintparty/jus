@@ -61,7 +61,7 @@ Babashka `v1.13.219`
 
 ## Installation
 ```
-$ bbin install io.github.paintparty/jus
+bbin install io.github.paintparty/jus
 ```
 
 <br>
