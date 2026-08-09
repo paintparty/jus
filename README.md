@@ -1,6 +1,6 @@
 <!-- <h1><span>&#x262F;&#xFE0E;</span> <i>jus</i></h1> -->
 
-# &#x262F;&#xFE0E; &nbsp;*jus*
+# &#x262F;&#xFE0E; &nbsp;jus
 
 **A TUI app for Clojure dialects.**
 
@@ -55,7 +55,7 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 <br>
 
 ## Requirements
-Babashka v1.13.219
+Babashka `v1.13.219`
 
 <br>
 
