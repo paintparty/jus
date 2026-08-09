@@ -6,6 +6,10 @@
 
 <br>
 
+Scaffold new projects, run tasks, launch REPLs, explore community resources, and more.
+
+<br>
+
 Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj), with help from [rewrite-clj](https://github.com/clj-commons/rewrite-clj) + [cljfmt](https://github.com/weavejester/cljfmt) 
 
 Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new)
