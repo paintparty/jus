@@ -145,6 +145,8 @@ featured in various resource menus, for example:
 - [Awesome Clojure](https://github.com/razum2um/awesome-clojure)
 
 
+<br>
+
 ## License
 
 Copyright © 2026 Jeremiah Coyle
