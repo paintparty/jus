@@ -1,0 +1,490 @@
+#!/usr/bin/expect -f
+
+set timeout 180
+log_user 0
+if {[info exists env(SPIKE_VERBOSE)]} {
+  log_user 1
+}
+
+set script_path [file normalize [info script]]
+set repo_root [file dirname [file dirname $script_path]]
+set scripts_dir [file join $repo_root scripts]
+set temp_root [exec mktemp -d /tmp/jus-repl-handoff.XXXXXX]
+set work_dir [file join $temp_root work]
+set cache_dir [file join $temp_root cache]
+file mkdir $work_dir $cache_dir
+
+set failure_pattern {Failed to start.*thread|OutOfMemoryError|unable to create native thread|Exception in thread}
+
+array set runtime_label {
+  clojure Clojure
+  rebel {Clojure with Rebel Readline}
+  babashka Babashka
+  clojurescript ClojureScript
+}
+
+array set clear_marker {}
+foreach runtime [array names runtime_label] {
+  set width [expr {15 + [string length $runtime_label($runtime)]}]
+  set clear_marker($runtime) "\r[string repeat { } $width]\r"
+}
+
+array set version_pattern {
+  clojure {Clojure [0-9][^\r\n]*}
+  rebel {Clojure [0-9][^\r\n]*}
+  babashka {Babashka v[0-9][^\r\n]*}
+  clojurescript {ClojureScript 1\.12\.145}
+}
+
+array set prompt_pattern {
+  clojure {user=>}
+  rebel {user=>}
+  babashka {user=>}
+  clojurescript {cljs\.user=>}
+}
+
+array set prompt_text {
+  clojure {user=>}
+  rebel {user=>}
+  babashka {user=>}
+  clojurescript {cljs.user=>}
+}
+
+array set help_pattern {
+  rebel {\[Rebel readline\] Type :repl/help for online help info}
+  babashka {Type :repl/help for help}
+}
+
+proc fail {message} {
+  global temp_root
+  puts stderr "FAIL: $message (artifacts: $temp_root)"
+  exit 1
+}
+
+proc occurrence_count {text data} {
+  set count 0
+  set offset 0
+  while {1} {
+    set index [string first $text $data $offset]
+    if {$index < 0} {
+      return $count
+    }
+    incr count
+    set offset [expr {$index + [string length $text]}]
+  }
+}
+
+proc read_transcript {path} {
+  set stream [open $path r]
+  fconfigure $stream -translation binary -encoding utf-8
+  set data [read $stream]
+  close $stream
+  return $data
+}
+
+proc assert_terminal_cleanup {runtime transcript} {
+  foreach sequence [list "\033\[?1049h" "\033\[?1049l" \
+                         "\033\[?1047h" "\033\[?1047l" \
+                         "\033\[?47h" "\033\[?47l" \
+                         "\033\[?25l"] {
+    if {[string first $sequence $transcript] >= 0} {
+      fail "$runtime left forbidden alternate-screen or cursor visibility control output"
+    }
+  }
+
+  foreach pair [list \
+                    [list "\033\[?2004h" "\033\[?2004l"] \
+                    [list "\033\[?1h" "\033\[?1l"] \
+                    [list "\033=" "\033>"]] {
+    lassign $pair enable disable
+    set enabled [occurrence_count $enable $transcript]
+    set disabled [occurrence_count $disable $transcript]
+    if {$enabled != $disabled} {
+      fail "$runtime terminal mode was not restored ($enabled enable, $disabled disable)"
+    }
+  }
+
+  foreach mouse_mode {1000 1002 1003 1005 1006 1015 1016} {
+    set enabled [occurrence_count "\033\[?${mouse_mode}h" $transcript]
+    set disabled [occurrence_count "\033\[?${mouse_mode}l" $transcript]
+    if {$enabled > $disabled} {
+      fail "$runtime left mouse mode $mouse_mode enabled"
+    }
+  }
+}
+
+proc assert_spinner_cleanup {runtime transcript} {
+  global clear_marker runtime_label
+  if {[regexp -- {[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]} $transcript]} {
+    fail "$runtime launch emitted the old braille spinner"
+  }
+  set spinner_text "☯  Starting $runtime_label($runtime)..."
+  set spinner_index [string first $spinner_text $transcript]
+  set clear_index [string first $clear_marker($runtime) $transcript]
+  if {$spinner_index < 0 || $clear_index <= $spinner_index} {
+    fail "$runtime spinner did not render and clear"
+  }
+  return [list $spinner_index $clear_index]
+}
+
+proc assert_transcript {runtime transcript_path} {
+  global clear_marker failure_pattern prompt_text runtime_label version_pattern
+  set transcript [read_transcript $transcript_path]
+  lassign [assert_spinner_cleanup $runtime $transcript] spinner_index clear_index
+  if {$runtime eq "rebel"} {
+    set dim_prefix "\033\[2m"
+    set dim_index [string first $dim_prefix $transcript]
+    set reset_suffix "\033\[0m  Starting $runtime_label($runtime)..."
+    set reset_index [string first $reset_suffix $transcript $dim_index]
+    if {$dim_index < 0 ||
+        $reset_index != ($dim_index + [string length $dim_prefix] + 1)} {
+      fail "$runtime spinner frame was not dim-styled"
+    }
+  }
+  set version_matches [regexp -all -inline -indices -- \
+                         $version_pattern($runtime) $transcript]
+  set prompt_index [string first $prompt_text($runtime) $transcript]
+
+  if {[llength $version_matches] != 1} {
+    fail "$runtime did not print exactly one version line"
+  }
+  set version_index [lindex [lindex $version_matches 0] 0]
+  if {$clear_index <= $spinner_index || $version_index <= $clear_index ||
+      $prompt_index <= $version_index} {
+    fail "$runtime did not clear the spinner before its version banner"
+  }
+  if {[regexp -- $failure_pattern $transcript]} {
+    fail "$runtime emitted a native-thread or startup failure"
+  }
+
+  set launch_prefix [string range $transcript 0 \
+                       [expr {$clear_index + [string length $clear_marker($runtime)] - 1}]]
+  if {[regexp -- {\033\[[0-9;?]*[ABCDEFGHJKSTfhlnsu]} $launch_prefix]} {
+    fail "$runtime launch UI emitted cursor-control output before its version"
+  }
+  assert_terminal_cleanup $runtime $transcript
+}
+
+proc spawn_for_cleanup_check {name path_entries handoff_delay_ms} {
+  global cache_dir scripts_dir temp_root work_dir
+  set transcript_path [file join $temp_root "$name.log"]
+  set bb_path [lindex [auto_execok bb] 0]
+  log_file -a -noappend $transcript_path
+  spawn -noecho sh -c {stty rows 40 columns 120; cd "$1"; shift; exec "$@"} \
+    sh $work_dir env "PATH=$path_entries" "XDG_CACHE_HOME=$cache_dir" \
+    "JUS_SPIKE_READINESS_DELAY_MS=$handoff_delay_ms" \
+    $bb_path -cp $scripts_dir -m repl-handoff.launch clojure
+  return [list $transcript_path $spawn_id]
+}
+
+proc assert_pre_readiness_cleanup {} {
+  global version_pattern
+
+  lassign [spawn_for_cleanup_check startup-failure /usr/bin:/bin 0] \
+    failure_transcript failure_channel
+  expect {
+    -i $failure_channel
+    eof {}
+    timeout {fail "startup failure left the spinner sidecar holding the PTY"}
+  }
+  set failure_status [wait_status $failure_channel]
+  log_file
+  set failure_output [read_transcript $failure_transcript]
+  if {$failure_status == 0} {
+    fail "missing runtime executable unexpectedly exited successfully"
+  }
+  assert_spinner_cleanup clojure $failure_output
+  if {[regexp -- $version_pattern(clojure) $failure_output]} {
+    fail "startup failure printed a runtime version"
+  }
+
+  lassign [spawn_for_cleanup_check startup-interrupt $::env(PATH) 5000] \
+    interrupt_transcript interrupt_channel
+  set interrupt_sent false
+  expect {
+    -i $interrupt_channel
+    -re {Starting Clojure\.\.\.} {
+      if {!$interrupt_sent} {
+        set interrupt_sent true
+        after 2000
+        send -i $interrupt_channel "\003"
+      }
+      exp_continue
+    }
+    eof {}
+    timeout {fail "pre-readiness Ctrl-C left the spinner sidecar holding the PTY"}
+  }
+  set interrupt_status [wait_status $interrupt_channel]
+  log_file
+  if {$interrupt_status != 130} {
+    fail "pre-readiness Ctrl-C exited $interrupt_status instead of 130"
+  }
+  set interrupt_output [read_transcript $interrupt_transcript]
+  if {[string first $::clear_marker(clojure) $interrupt_output] < 0} {
+    fail "pre-readiness Ctrl-C did not clear the active spinner sidecar"
+  }
+  if {[regexp -- $version_pattern(clojure) $interrupt_output] ||
+      [string first "user=>" $interrupt_output] >= 0} {
+    fail "pre-readiness Ctrl-C occurred after runtime handoff"
+  }
+  puts "PASS pre-readiness cleanup: startup failure and Ctrl-C both clear the spinner and release the PTY"
+}
+
+proc wait_status {channel} {
+  set result [wait -i $channel]
+  if {[info exists ::env(SPIKE_VERBOSE)]} {
+    puts "WAIT $result"
+  }
+  return [lindex $result 3]
+}
+
+proc start_runtime {runtime purpose} {
+  global cache_dir clear_marker failure_pattern help_pattern prompt_pattern repo_root
+  global runtime_label scripts_dir temp_root work_dir
+
+  set transcript_path [file join $temp_root "$runtime-$purpose.log"]
+  if {[info exists ::env(SPIKE_VERBOSE)]} {
+    puts "RUN $runtime $purpose"
+  }
+  log_file -a -noappend $transcript_path
+  spawn -noecho sh -c {stty rows 40 columns 120; cd "$1"; shift; exec "$@"} \
+    sh $work_dir env "XDG_CACHE_HOME=$cache_dir" \
+    "JUS_REPL_LINE_DELAY_MS=100" \
+    bb -cp $scripts_dir -m repl-handoff.launch $runtime
+  set target_pid [exp_pid]
+
+  expect {
+    "REPL Started. Ctrl-D to quit.\r\n" {}
+    -re $failure_pattern {fail "$runtime failed before its readiness banner"}
+    timeout {fail "$runtime did not print its readiness banner"}
+    eof {fail "$runtime exited before its readiness banner"}
+  }
+  set previous_line_at [clock milliseconds]
+
+  expect {
+    -re $::version_pattern($runtime) {}
+    -re $failure_pattern {fail "$runtime failed before its version banner"}
+    timeout {fail "$runtime did not print its version banner"}
+    eof {fail "$runtime exited before its version banner"}
+  }
+  set version_at [clock milliseconds]
+  if {($version_at - $previous_line_at) < 80} {
+    fail "$runtime did not pace its version banner"
+  }
+  set previous_line_at $version_at
+
+  if {[info exists help_pattern($runtime)]} {
+    expect {
+      -re $help_pattern($runtime) {}
+      -re $failure_pattern {fail "$runtime failed before its help banner"}
+      timeout {fail "$runtime did not print its help banner"}
+      eof {fail "$runtime exited before its help banner"}
+    }
+    set help_at [clock milliseconds]
+    if {($help_at - $previous_line_at) < 80} {
+      fail "$runtime did not pace its optional help banner"
+    }
+    set previous_line_at $help_at
+  }
+
+  expect {
+    -re $prompt_pattern($runtime) {}
+    -re $failure_pattern {fail "$runtime failed before its prompt"}
+    timeout {fail "$runtime did not reach its expected prompt"}
+    eof {fail "$runtime exited before its expected prompt"}
+  }
+  set prompt_at [clock milliseconds]
+  if {($prompt_at - $previous_line_at) < 80} {
+    fail "$runtime did not pace its initial prompt"
+  }
+
+  return [list $transcript_path $target_pid $spawn_id]
+}
+
+proc finish_run {runtime transcript_path channel expected_status} {
+  expect {
+    -i $channel
+    eof {}
+    timeout {fail "$runtime did not exit"}
+  }
+  set status [wait_status $channel]
+  log_file
+  if {$status != $expected_status} {
+    fail "$runtime exited $status, expected $expected_status"
+  }
+  assert_transcript $runtime $transcript_path
+}
+
+proc normal_exit {runtime} {
+  lassign [start_runtime $runtime normal] transcript_path target_pid channel
+  if {$runtime eq "clojurescript"} {
+    send -i $channel ":cljs/quit\r"
+  } else {
+    send -i $channel "\004"
+  }
+  finish_run $runtime $transcript_path $channel 0
+}
+
+proc thread_count {target_pid} {
+  if {![catch {exec ps -M $target_pid} listing]} {
+    return [expr {[llength [split [string trim $listing] "\n"]] - 1}]
+  }
+
+  set tasks [glob -nocomplain "/proc/$target_pid/task/*"]
+  if {[llength $tasks] > 0} {
+    return [llength $tasks]
+  }
+
+  fail "cannot measure Rebel thread stability on this platform"
+}
+
+proc assert_rebel_process_replacement {target_pid} {
+  set parent_pid [string trim [exec ps -o ppid= -p $target_pid]]
+  set command [string trim [exec ps -o command= -p $target_pid]]
+  set harness_pid [pid]
+
+  if {$parent_pid != $harness_pid} {
+    fail "Rebel parent is $parent_pid instead of PTY harness $harness_pid"
+  }
+  if {![regexp {(^|/)java([[:space:]]|$)} $command] ||
+      ![string match {*rebel-readline.main*} $command]} {
+    fail "Rebel target was not the process-replaced JVM: $command"
+  }
+  if {[regexp {(^|[[:space:]/])bb([[:space:]]|$)} $command]} {
+    fail "a waiting Babashka process still owns the Rebel PTY"
+  }
+
+  return $command
+}
+
+proc ctrl_c {runtime} {
+  global failure_pattern prompt_pattern
+  lassign [start_runtime $runtime ctrl-c] transcript_path target_pid channel
+
+  if {$runtime eq "rebel"} {
+    set command [assert_rebel_process_replacement $target_pid]
+    set threads_before [thread_count $target_pid]
+  }
+
+  if {$runtime eq "clojure" || $runtime eq "clojurescript"} {
+    send -i $channel "\003"
+    finish_run $runtime $transcript_path $channel 130
+    return "exit 130"
+  }
+
+  set interrupt_count [expr {$runtime eq "rebel" ? 3 : 1}]
+  for {set interrupt 0} {$interrupt < $interrupt_count} {incr interrupt} {
+    send -i $channel "\003"
+    expect {
+      -i $channel
+      -re $prompt_pattern($runtime) {}
+      -re $failure_pattern {fail "$runtime Ctrl-C triggered a thread/startup failure"}
+      timeout {fail "$runtime Ctrl-C did not return to its prompt"}
+      eof {fail "$runtime Ctrl-C unexpectedly exited the REPL"}
+    }
+    after 250
+  }
+
+  if {$runtime eq "rebel"} {
+    set threads_after [thread_count $target_pid]
+    if {$threads_after > ($threads_before + 2)} {
+      fail "Rebel Ctrl-C grew threads from $threads_before to $threads_after"
+    }
+    set ctrl_result "$interrupt_count fresh prompts, threads $threads_before->$threads_after, direct JVM pid $target_pid"
+  } else {
+    set ctrl_result "fresh prompt"
+  }
+
+  send -i $channel "\004"
+  finish_run $runtime $transcript_path $channel 0
+  return $ctrl_result
+}
+
+proc prepare_dependencies {} {
+  global work_dir
+  set rebel_deps "{:deps {com.bhauman/rebel-readline {:mvn/version \"0.1.11\"}}}"
+  set cljs_deps "{:deps {org.clojure/clojurescript {:mvn/version \"1.12.145\"}}}"
+  set original_dir [pwd]
+  cd $work_dir
+  if {[catch {exec clojure -Sdeps $rebel_deps -P -M} message]} {
+    fail "Rebel dependency preparation failed: $message"
+  }
+  if {[catch {exec clojure -Sdeps $cljs_deps -P -M} message]} {
+    fail "ClojureScript dependency preparation failed: $message"
+  }
+  cd $original_dir
+  puts "PASS preparation: pinned Rebel and ClojureScript dependencies are ready"
+}
+
+proc work_files {directory root} {
+  set entries {}
+  set children [concat \
+                  [glob -nocomplain -tails -directory $directory *] \
+                  [glob -nocomplain -tails -directory $directory .*]]
+  foreach child $children {
+    if {$child eq "." || $child eq ".."} {
+      continue
+    }
+    set path [file join $directory $child]
+    if {[file isdirectory $path]} {
+      foreach nested [work_files $path $root] {
+        lappend entries $nested
+      }
+    } else {
+      set relative [string range $path [expr {[string length $root] + 1}] end]
+      if {![string match {.cpcache/*} $relative]} {
+        lappend entries $relative
+      }
+    }
+  }
+  return [lsort $entries]
+}
+
+proc work_tree {} {
+  global work_dir
+  return [work_files $work_dir $work_dir]
+}
+
+proc assert_managed_cljs_cache {before_tree} {
+  global cache_dir
+  set after_tree [work_tree]
+  if {$after_tree ne $before_tree} {
+    fail "ClojureScript wrote outside its managed cache: before=$before_tree after=$after_tree"
+  }
+
+  set cache_roots [glob -nocomplain -types d \
+                     [file join $cache_dir jus cljs-repl 1.12.145 *]]
+  if {[llength $cache_roots] != 1} {
+    fail "expected one working-directory-keyed ClojureScript cache, found [llength $cache_roots]"
+  }
+  if {![file isfile [file join [lindex $cache_roots 0] node_repl.js]]} {
+    fail "managed ClojureScript cache does not contain node_repl.js"
+  }
+}
+
+foreach executable {bb clojure node ps} {
+  if {[auto_execok $executable] eq ""} {
+    fail "required executable not found: $executable"
+  }
+}
+
+prepare_dependencies
+assert_pre_readiness_cleanup
+
+foreach runtime {clojure rebel babashka} {
+  normal_exit $runtime
+  set ctrl_result [ctrl_c $runtime]
+  puts "PASS $runtime_label($runtime): spinner cleared before one version and $prompt_text($runtime); normal exit 0; Ctrl-C $ctrl_result"
+}
+
+set before_cljs_tree [work_tree]
+normal_exit clojurescript
+set ctrl_result [ctrl_c clojurescript]
+puts "PASS $runtime_label(clojurescript): spinner cleared before one version and $prompt_text(clojurescript); normal exit 0; Ctrl-C $ctrl_result"
+
+assert_managed_cljs_cache $before_cljs_tree
+puts "PASS ClojureScript cache: all compiler output stayed under XDG_CACHE_HOME/jus/cljs-repl/1.12.145/<cwd-sha256>"
+puts "PASS terminal handoff: no alternate-screen residue, launch cursor controls, waiting Babashka Rebel parent, or Rebel thread loop"
+puts "PASS all four runtimes"
+
+file delete -force $temp_root

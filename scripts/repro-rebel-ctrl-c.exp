@@ -1,0 +1,83 @@
+#!/usr/bin/expect -f
+
+set timeout 30
+log_user 1
+
+proc spawn_fixed {args} {
+  global spawn_id
+  spawn -noecho sh -c {stty rows 40 columns 120; exec "$@"} sh {*}$args
+}
+
+proc await_prompt {} {
+  expect {
+    -re {user=>} {}
+    -re {Failed to start.*thread|OutOfMemoryError|unable to create native thread} {
+      puts stderr "FAIL: native-thread failure before Rebel prompt"
+      exit 1
+    }
+    timeout {
+      puts stderr "FAIL: Rebel prompt did not appear"
+      exit 2
+    }
+    eof {
+      puts stderr "FAIL: launcher exited before Rebel prompt"
+      exit 2
+    }
+  }
+}
+
+proc assert_ctrl_c {} {
+  send "\003"
+  expect {
+    -re {Failed to start.*thread|OutOfMemoryError|unable to create native thread} {
+      puts stderr "FAIL: Ctrl-C triggered native-thread failure"
+      exit 1
+    }
+    -re {user=>} {}
+    timeout {
+      puts stderr "FAIL: no fresh Rebel prompt after Ctrl-C"
+      exit 1
+    }
+    eof {
+      puts stderr "FAIL: launcher exited after Ctrl-C"
+      exit 1
+    }
+  }
+  send "\004"
+  expect eof
+  puts "PASS: Ctrl-C returned to a fresh Rebel prompt"
+}
+
+set deps_edn "\{:deps \{com.bhauman/rebel-readline \{:mvn/version \"0.1.11\"\}\}\}"
+set mode [lindex $argv 0]
+
+switch -- $mode {
+  direct {
+    spawn_fixed clojure -Sdeps $deps_edn -M -m rebel-readline.main
+  }
+  flags {
+    spawn_fixed clojure -J--enable-native-access=ALL-UNNAMED -Sdeps $deps_edn -M -m rebel-readline.main --color-theme neutral-screen-theme
+  }
+  process-builder {
+    set form {(let [p (-> (ProcessBuilder. ["clojure" "-Sdeps" "{:deps {com.bhauman/rebel-readline {:mvn/version \"0.1.11\"}}}" "-M" "-m" "rebel-readline.main"]) (.inheritIO) (.start))] (System/exit (.waitFor p)))}
+    spawn_fixed bb -e $form
+  }
+  exec {
+    set form {(do (require '[babashka.process]) (apply (resolve 'babashka.process/exec) ["clojure" "-Sdeps" "{:deps {com.bhauman/rebel-readline {:mvn/version \"0.1.11\"}}}" "-M" "-m" "rebel-readline.main"]))}
+    spawn_fixed bb -e $form
+  }
+  wizard {
+    spawn_fixed bb jus
+    after 3000
+    send "\033\[B"
+    after 300
+    send "\r"
+  }
+  default {
+    puts stderr "Usage: $argv0 direct|flags|process-builder|exec|wizard"
+    exit 2
+  }
+}
+
+await_prompt
+assert_ctrl_c

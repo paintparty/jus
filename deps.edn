@@ -1,0 +1,12 @@
+{:paths   ["src"]
+
+ :deps    {org.clojure/clojure     {:mvn/version "1.12.0"}
+           dev.weavejester/cljfmt  {:mvn/version "0.16.4"}
+           de.timokramer/charm.clj {:mvn/version "0.2.71"}
+           babashka/fs             {:mvn/version "0.5.22"}
+           rewrite-clj/rewrite-clj {:mvn/version "1.1.49"}}
+
+ :aliases {:run   {:main-opts ["-m" "jus.tui.core"]}
+           :test  {:extra-paths ["test" "scripts"]}
+           :nrepl {:extra-deps {nrepl/nrepl {:mvn/version "1.7.0"}}
+                   :main-opts  ["-m" "nrepl.cmdline" "--port" "7999"]}}}
