@@ -6,16 +6,15 @@
 
 <br>
 
-Scaffold new projects, run tasks, launch REPLs, explore community resources, and more.
+Scaffold new projects, run tasks, launch REPLs, and explore community resources.
 
 <br>
 
-Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj), with help from [rewrite-clj](https://github.com/clj-commons/rewrite-clj) + [cljfmt](https://github.com/weavejester/cljfmt) 
+Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj), with help from [rewrite-clj](https://github.com/clj-commons/rewrite-clj) + [cljfmt](https://github.com/weavejester/cljfmt). 
 
-Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new)
+Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new).
 
 <br>
-
 
 <p align="center">
   <img src="resources/screens/motion/main-menu_light-mode.gif#gh-light-mode-only"></img>
@@ -64,6 +63,10 @@ Babashka `v1.13.219`
 <br>
 
 ## Installation
+First, [follow these instructions](https://github.com/babashka/bbin#installation) to install `bbin`, if it is not already installed.
+
+Then install **jus**:
+
 ```
 bbin install io.github.paintparty/jus
 ```
@@ -71,7 +74,7 @@ bbin install io.github.paintparty/jus
 <br>
 
 ## Usage
-Launch the TUI app:
+Launch the TUI:
 ```
 jus
 ```
@@ -81,6 +84,15 @@ If your project has a `bb.edn` file with `tasks` defined, you can interactively 
 ```
 jus tasks
 ```
+
+<br>
+
+## Roadmap 
+Based on usage patterns, and any feedback going forward from community, here is a list of features being considered:
+ - Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how **jus** currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
+ - Discovery of libs/functions ala [The Clojure Toolbox](https://www.clojure-toolbox.com/), [clojure.land](https://clojure.land/), or [Cloogle](https://cloogle.phronemophobic.com/doc-search.html)
+ - Lightweight "My projects" directory/dashboard
+
 
 <br>
 
@@ -165,3 +177,10 @@ Public License, v. 2.0 are satisfied: GNU General Public License as published by
 the Free Software Foundation, either version 2 of the License, or (at your
 option) any later version, with the GNU Classpath Exception which is available
 at https://www.gnu.org/software/classpath/license.html.
+
+
+I am reporting this account/repository because it appears to be a short-lived, substantially AI-generated SEO/reputation campaign targeting named individuals and a company, rather than a genuine FOSS/free-culture project.
+
+This project look alot like SEO spam. The repository appears designed for search indexing via Codeberg Pages, multilingual sitemaps, crawler-friendly robots.txt, and legal-looking AI-generated articles. It includes accusations about named people and a company, and seems to use Codeberg primarily as hosting for reputational/search visibility rather than shared FOSS.
+
+I understand this is separate from username availability. For transparency, I discovered this user and repo because I am interested in using the “jus” namespace for a legitimate project if Codeberg ever determines the current account violates policy and releases the name. The project, which I just released, is a fully-functioning TUI app for Clojure dialects. It is a beginner-friendly gateway to project creation, the REPL, running repo tasks, and exploring Clojure community resources. 
