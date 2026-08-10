@@ -21,8 +21,11 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
   <img src="resources/screens/motion/main-menu_dark-mode.gif#gh-dark-mode-only"></img>
 </p>
 
+<br>
 
-**Launch a wizard to scaffold a new Clojure [deps.edn](https://clojure.org/reference/deps_edn) project:**
+## Features
+
+• &nbsp;  **Launch a wizard to scaffold a new Clojure [deps.edn](https://clojure.org/reference/deps_edn) project:**
 
 <p align="center">
   <img src="resources/screens/motion/project-wizard_light-mode.gif#gh-light-mode-only"></img>
@@ -31,7 +34,7 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 
 <br>
 
-**Launch an interactive REPL for a given clj dialect:**
+• &nbsp;  **Launch an interactive REPL for a given clj dialect:**
 
 <p align="center">
   <img src="resources/screens/motion/launch-repl_light-mode.gif#gh-light-mode-only"></img>
@@ -40,14 +43,14 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 
 <br>
 
-**Explore Clojure community resources:**
+• &nbsp;  **Explore Clojure community resources:**
 
 <p align="center">
   <img src="resources/screens/motion/community-resources_light-mode.gif#gh-light-mode-only"></img>
   <img src="resources/screens/motion/community-resources_dark-mode.gif#gh-dark-mode-only"></img>
 </p>
 
-**Select and run tasks:**
+• &nbsp;  **Select and run tasks:**
 
 <p align="center">
   <img src="resources/screens/motion/jus-tasks_light-mode.gif#gh-light-mode-only"></img>
@@ -88,10 +91,15 @@ jus tasks
 <br>
 
 ## Roadmap 
-Based on usage patterns, and any feedback going forward from community, here is a list of features being considered:
- - Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how **jus** currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
- - Discovery of libs/functions ala [The Clojure Toolbox](https://www.clojure-toolbox.com/), [clojure.land](https://clojure.land/), or [Cloogle](https://cloogle.phronemophobic.com/doc-search.html)
- - Lightweight "My projects" directory/dashboard
+Based on usage patterns, and any community feeback going forward, here is a short list of features being considered:
+
+- Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how **jus** currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
+
+- Discovery of libs/functions ala [The Clojure Toolbox](https://www.clojure-toolbox.com/), [clojure.land](https://clojure.land/), or [Cloogle](https://cloogle.phronemophobic.com/doc-search.html)
+
+- Lightweight "My Projects" directory/dashboard
+
+- Automated "recent news" aggregator feed for people who want to limit their exposure to the UI of Slack, Reddit, etc.
 
 
 <br>
