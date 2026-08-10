@@ -25,7 +25,7 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 
 ## Features
 
-• &nbsp;  **Launch a wizard to scaffold a new Clojure [deps.edn](https://clojure.org/reference/deps_edn) project:**
+• &nbsp;  **Launch the ***New Project Wizard*** to scaffold a new Clojure [deps.edn](https://clojure.org/reference/deps_edn) project. More project types coming soon.**
 
 <p align="center">
   <img src="resources/screens/motion/project-wizard_light-mode.gif#gh-light-mode-only"></img>
@@ -50,7 +50,7 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
   <img src="resources/screens/motion/community-resources_dark-mode.gif#gh-dark-mode-only"></img>
 </p>
 
-• &nbsp;  **Select and run tasks:**
+• &nbsp;  **Select and run bb.edn tasks:**
 
 <p align="center">
   <img src="resources/screens/motion/jus-tasks_light-mode.gif#gh-light-mode-only"></img>
