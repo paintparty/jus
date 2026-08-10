@@ -34,7 +34,7 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 
 <br>
 
-• &nbsp;  **Launch an interactive REPL for a given clj dialect:**
+• &nbsp;  **Launch an interactive REPL for a given dialect:**
 
 <p align="center">
   <img src="resources/screens/motion/launch-repl_light-mode.gif#gh-light-mode-only"></img>
@@ -50,7 +50,7 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
   <img src="resources/screens/motion/community-resources_dark-mode.gif#gh-dark-mode-only"></img>
 </p>
 
-• &nbsp;  **Select and run bb.edn tasks:**
+• &nbsp;  **Select and run bb tasks:**
 
 <p align="center">
   <img src="resources/screens/motion/jus-tasks_light-mode.gif#gh-light-mode-only"></img>
@@ -91,7 +91,7 @@ jus tasks
 <br>
 
 ## Roadmap 
-Based on usage patterns, and any community feeback going forward, here is a short list of features being considered:
+Based on usage patterns and subject to community feeback going forward, here is a short list of features being considered:
 
 - Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how **jus** currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
 
