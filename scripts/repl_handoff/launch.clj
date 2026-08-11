@@ -35,17 +35,27 @@
 (def ^:private cljs-ready-init
   (str script-dir java.io.File/separator "cljs_ready.clj"))
 
+(def ^:private jolt-ready-init
+  (str script-dir java.io.File/separator "jolt_ready.clj"))
+
+(def ^:private let-go-ready-init
+  (str script-dir java.io.File/separator "let_go_ready.clj"))
+
 (def runtime-labels
-  {:clojure "Clojure"
-   :rebel "Clojure with Rebel Readline"
-   :babashka "Babashka"
-   :clojurescript "ClojureScript"})
+  {:clojure       "Clojure"
+   :rebel         "Clojure with Rebel Readline"
+   :babashka      "Babashka"
+   :clojurescript "ClojureScript"
+   :jolt          "Jolt"
+   :let-go        "let-go"})
 
 (def runtime-banner-lines
   {:clojure 1
    :rebel 2
    :babashka 2
-   :clojurescript 1})
+   :clojurescript 1
+   :jolt 1
+   :let-go 2})
 
 (def runtime-banner-outputs
   {:babashka :system-error})
@@ -108,6 +118,12 @@
        "--repl-env"
        "node"
        "--repl"])
+
+    :jolt
+    ["jolt" "run" jolt-ready-init]
+
+    :let-go
+    ["lg" "-r" let-go-ready-init]
 
     (throw (ex-info "Unknown spike runtime" {:runtime runtime}))))
 

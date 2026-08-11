@@ -110,7 +110,13 @@
       (is (= 42 animation/reverse-confetti-total-frames))
       (is (= 8 animation/reverse-confetti-frame-rate))
       (is (= 250 animation/post-confetti-blank-screen-pause))
-      (is (= ["\n  ☯" "\n  ☯" "\n  ☯ j" "\n  ☯ ju" "\n  ☯ jus" "\n  ☯ jus" "\n  ☯ jus"]
+      (is (= ["\n  ☯"
+              "\n  ☯"
+              "\n  ☯ j"
+              "\n  ☯ ju"
+              "\n  ☯ jus"
+              "\n  ☯ jus"
+              "\n  ☯ jus"]
              visible-headers))
       (is (int? animation/opening-header-animation-frame-rate))
       (is (= :in (get-in opening [:opening-animation :confetti :direction])))
@@ -121,8 +127,8 @@
       (is (str/includes? (nth rendered-headers 4) (style/primary-italic "jus")))
       (is (str/includes? (nth rendered-headers 5) (style/accent-italic "jus")))
       (is (str/includes? (nth rendered-headers 6) (style/accent-italic "jus")))
-      (is (= [(:row core/main-menu-logo-position)
-              (:column core/main-menu-logo-position)]
+      (is (= [(:row style/main-menu-logo-position)
+              (:column style/main-menu-logo-position)]
              (position-of (animation/render-confetti final-confetti 80 24) \☯)
              (position-of (last rendered-headers) \☯)
              (position-of (core/view menu) \☯)))
@@ -513,8 +519,8 @@
     (is (= 130 (:exit-code (first (core/update-fn initial
                                                   (msg/key-press "c" :ctrl true))))))
     (is (str/includes? rendered "Select REPL type"))
-    (is (str/includes? rendered "Clojure (default)"))
-    (is (str/includes? rendered "ClojureScript (JS)"))))
+    (is (str/includes? rendered "Clojure                      JVM, default"))
+    (is (str/includes? rendered "ClojureScript                JS"))))
 
 (defn- final-confirmation-state [parent]
   {:step           :path-confirm-final

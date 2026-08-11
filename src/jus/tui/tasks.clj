@@ -86,7 +86,7 @@
 
 (def ^:private picker-max-width 80)
 (def tasks-gap 0)
-(def tasks-animation-frame-rate 15)
+(def tasks-animation-frame-rate 10)
 (def tasks-reveal-frame-rate 40)
 (def tasks-animation-tick "tasks-animation-tick")
 

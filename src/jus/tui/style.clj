@@ -1,13 +1,24 @@
 (ns jus.tui.style
-  (:require [charm.style.core :as charm-style]))
+  (:require [charm.style.core :as charm-style]
+            [clojure.string :as str]))
 
 (def no-color? true)
 
+;; Icons
+(def error-prefix #_"▲ " "! ")
+
+;; Formatting
+(def margin-inline-start 2)
+(def margin-inline-start-str (str/join (repeat margin-inline-start " ")))
+(def main-menu-logo-position {:row 1 :column margin-inline-start})
+
+;; Colors
 (def secondary-hex (charm-style/hex "#9e9e9e"))
 (def accent-hex (charm-style/hex "#4eb5ec"))
 (def success-hex (charm-style/hex "#00d700"))
 (def error-hex (charm-style/hex "#ff0000"))
 
+;; Styles
 (def secondary-style (charm-style/style :fg secondary-hex))
 (def neutral-accent-style (charm-style/style :fg secondary-hex :bold true))
 (def neutral-accent-italic-style (charm-style/style :fg secondary-hex :bold true :italic true))

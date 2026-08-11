@@ -10,7 +10,7 @@
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
             [jus.tui.repls :as repls]
-            [jus.tui.style :as style]
+            [jus.tui.style :as style :refer [error-prefix]]
             [jus.tui.tasks :as tasks])
   (:import (java.lang ProcessBuilder$Redirect)
            (java.nio.file Files LinkOption)))
@@ -23,8 +23,6 @@
 
 (def open-in-browser-suffix (str " " open-in-browser-icon " "))
 
-(def error-prefix #_"▲ " "! ")
-
 (def clear-console-on-launch?
   "Whether to clear the visible console before starting the TUI."
   true)
@@ -33,20 +31,11 @@
   "Number of spaces between columns in menu rows."
   3)
 
-;; TODO - use this in all layouts
-(def margin-inline-start
-  2)
-
-(def margin-inline-start-str
-  (str/join (repeat 2 " ")))
-
-(def main-menu-logo-position
-  {:row 1 :column margin-inline-start})
 
 (defn- main-menu-logo-prefix
   []
-  (str (apply str (repeat (:row main-menu-logo-position) "\n"))
-       (apply str (repeat (:column main-menu-logo-position) " "))))
+  (str (apply str (repeat (:row style/main-menu-logo-position) "\n"))
+       (apply str (repeat (:column style/main-menu-logo-position) " "))))
 
 (def main-menu-logo
   (str (style/accent "☯") " " (style/accent-italic "jus")))
@@ -1629,13 +1618,20 @@
                                                        (:resource-labels state)))))))
         items (case step
                 :main-menu (main-menu-items)
-                :repl-menu (mapv #(assoc %
-                                         :label
-                                         (str (:label %)
-                                              " ("
-                                              (:description %)
-                                              ")"))
-                                 repls/options)
+                :repl-menu (let [col2-start (->> repls/options 
+                                                 (map #(some-> % :label count)) 
+                                                 (apply max) 
+                                                 (+ 2))]
+                             (mapv #(assoc %
+                                           :label
+                                           (str (:label %)
+                                                (str/join 
+                                                 (repeat (- col2-start
+                                                            (or (some-> % :label count)
+                                                                0))
+                                                         " "))
+                                                (:description %)))
+                                   repls/options))
                 :resources (resource-items state))]
     (str (main-menu-logo-prefix)
          title

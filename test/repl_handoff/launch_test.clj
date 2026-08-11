@@ -8,7 +8,9 @@
         clojure-command (launch/runtime-command :clojure working-directory)
         rebel-command (launch/runtime-command :rebel working-directory)
         babashka-command (launch/runtime-command :babashka working-directory)
-        cljs-command (launch/runtime-command :clojurescript working-directory)]
+        cljs-command (launch/runtime-command :clojurescript working-directory)
+        jolt-command (launch/runtime-command :jolt working-directory)
+        let-go-command (launch/runtime-command :let-go working-directory)]
     (testing "Clojure delegates to its same-JVM bootstrap"
       (is (= ["clojure" "-M"] (subvec clojure-command 0 2)))
       (is (str/ends-with? (last clojure-command) "clojure_bootstrap.clj")))
@@ -23,7 +25,13 @@
       (is (= "--repl" (last cljs-command)))
       (is (some #{"node"} cljs-command))
       (is (some #(str/includes? % "jus/cljs-repl/1.12.145/")
-                cljs-command)))))
+                cljs-command)))
+    (testing "Jolt runs its readiness bootstrap in the selected project"
+      (is (= ["jolt" "run"] (subvec jolt-command 0 2)))
+      (is (str/ends-with? (last jolt-command) "jolt_ready.clj")))
+    (testing "Let-go runs its readiness bootstrap before entering the REPL"
+      (is (= ["lg" "-r"] (subvec let-go-command 0 2)))
+      (is (str/ends-with? (last let-go-command) "let_go_ready.clj")))))
 
 (deftest command-construction-does-not-create-the-cljs-cache
   (let [cache-directory "/tmp/repl-handoff-pure-command-cache"]

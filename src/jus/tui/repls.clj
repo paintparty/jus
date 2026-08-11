@@ -1,5 +1,6 @@
 (ns jus.tui.repls
-  (:require [clojure.java.io :as io])
+  (:require [clojure.java.io :as io]
+            [jus.tui.style :as style :refer [error-prefix]])
   (:import (java.math BigInteger)
            (java.nio.charset StandardCharsets)
            (java.security MessageDigest)))
@@ -11,20 +12,28 @@
 (def options
   [{:id          :clojure
     :label       "Clojure"
-    :description "default"
+    :description "JVM, default"
     :requires    ["clojure"]}
    {:id          :rebel
-    :label       "Clojure, with rebel-readline"
-    :description "nicer experience"
+    :label       "Clojure with rebel-readline"
+    :description "JVM, nicer experience"
     :requires    ["clojure"]}
    {:id          :babashka
     :label       "Babashka"
-    :description "instant startup"
+    :description "Instant startup, SCI"
     :requires    ["bb"]}
    {:id          :clojurescript
     :label       "ClojureScript"
     :description "JS"
-    :requires    ["clojure" "node"]}])
+    :requires    ["clojure" "node"]}
+   {:id          :jolt
+    :label       "Jolt"
+    :description "Chez Scheme"
+    :requires    ["jolt"]}
+   {:id          :let-go
+    :label       "let-go"
+    :description "Go"
+    :requires    ["lg"]}])
 
 (defn option
   [id]
@@ -72,7 +81,9 @@
                     "-Sdeps" (deps-edn 'org.clojure/clojurescript clojurescript-version)
                     "-M" "-m" "cljs.main"
                     "--output-dir" (cljs-output-dir working-directory)
-                    "--repl-env" "node"]))
+                    "--repl-env" "node"]
+    :jolt ["jolt"]
+    :let-go ["lg"]))
 
 (defn preparation-command
   [id _working-directory]
@@ -89,11 +100,30 @@
 
 (defn missing-executable-message
   [executable]
+  ;; TODO - use bling formatting,
+  ;;        de-bold second hint line
+  ;;        helper fn to do indentation
   (case executable
-    "clojure" (str "Required executable not found: clojure\n"
+    "clojure" (str error-prefix
+                   "Required executable not found: clojure\n"
+                   style/margin-inline-start-str
                    "Install the official Clojure CLI from "
-                   "https://clojure.org/guides/install_clojure and try again.\n")
-    "bb" (str "Required executable not found: bb\n"
-              "Install Babashka from https://babashka.org/ and try again.\n")
-    "node" (str "Required executable not found: node\n"
-                "Install Node.js from https://nodejs.org/en/download and try again.\n")))
+                   "https://clojure.org/guides/install_clojure and try again.")
+    "bb"      (str error-prefix
+                   "Required executable not found: bb\n"
+                   style/margin-inline-start-str
+                   "Install Babashka from https://babashka.org/ and try again.")
+    "node"    (str error-prefix
+                   "Required executable not found: node\n"
+                   style/margin-inline-start-str
+                   "Install Node.js from https://nodejs.org/en/download and try again.")
+    "jolt"    (str error-prefix
+                   "Required executable not found: jolt\n"
+                   style/margin-inline-start-str
+                   "Refer to https://jolt-lang.github.io/docs/getting-started.html and try again.")
+    "lg"      (str error-prefix
+                   "Required executable not found: lg\n"
+                   style/margin-inline-start-str
+                   "Refer to https://github.com/nooga/let-go#install and try again.")
+    ))
+
