@@ -14,8 +14,10 @@ run_spinner() {
   ready_file="$state_dir/ready"
   stopped_file="$state_dir/stopped"
   width_file="$state_dir/width"
+  # The launcher selects a single-cell glyph so terminal clearing stays aligned.
+  logo=${JUS_SPINNER_LOGO:?missing single-cell spinner logo}
   # Keep one frame per line so leading/trailing spaces are preserved.
-  frames=$(printf '%s\n' '☯ ' "$(printf '\033[2m☯\033[0m ')" '  ' "$(printf '\033[2m☯\033[0m ')")
+  frames=$(printf '%s\n' "$logo " "$(printf '\033[2m%s\033[0m ' "$logo")" '  ' "$(printf '\033[2m%s\033[0m ' "$logo")")
   message="Starting $label..."
   frame_width=2
   line_width=$((${#message} + frame_width + 1))

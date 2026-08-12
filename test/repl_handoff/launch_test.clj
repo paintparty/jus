@@ -1,8 +1,49 @@
 (ns repl-handoff.launch-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
-            [repl-handoff.launch :as launch]))
+            [repl-handoff.launch :as launch])
+  (:import (java.nio.file Files)
+           (java.nio.file.attribute FileAttribute)))
 
+(def logo-fixtures
+  [["Windows 11" "◒"]
+   ["windows 10" "◒"]
+   ["Linux" "☯"]
+   ["Mac OS X" "☯"]])
+
+(deftest logo-follows-the-operating-system
+  (doseq [[os-name expected] logo-fixtures]
+    (is (= expected (launch/logo os-name)))))
+
+(deftest spinner-renders-the-logo-from-its-environment
+  (doseq [logo (distinct (map second logo-fixtures))]
+    (let [state-dir (.toFile
+                     (Files/createTempDirectory
+                      "jus-spinner-test-"
+                      (make-array FileAttribute 0)))
+          builder (ProcessBuilder.
+                   ^java.util.List
+                   ["sh" "scripts/repl_handoff/spinner.sh" "run"
+                    (.getCanonicalPath state-dir) "Test"
+                    "1"])
+          _ (.put (.environment builder) "JUS_SPINNER_LOGO" logo)
+          _ (.put (.environment builder)
+                  "PATH"
+                  (str "test/repl_handoff/fixtures:"
+                       (System/getenv "PATH")))
+          process (-> builder (.redirectErrorStream true) (.start))
+          output (future (slurp (.getInputStream process)))]
+      (try
+        (Thread/sleep 650)
+        (.destroy process)
+        (let [rendered @output]
+          (.waitFor process)
+          (is (str/includes? rendered (str logo "  Starting Test..."))))
+        (finally
+          (.destroyForcibly process)
+          (doseq [file (or (.listFiles state-dir) [])]
+            (.delete file))
+          (.delete state-dir))))))
 (deftest runtime-commands-use-readiness-aware-entry-points
   (let [working-directory "/tmp/repl-handoff-project"
         clojure-command (launch/runtime-command :clojure working-directory)

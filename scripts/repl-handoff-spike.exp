@@ -16,6 +16,11 @@ file mkdir $work_dir $cache_dir
 
 set failure_pattern {Failed to start.*thread|OutOfMemoryError|unable to create native thread|Exception in thread}
 
+set logo [string trim [exec bb -cp $scripts_dir -e {
+  (require '[repl-handoff.launch :as launch])
+  (print (launch/logo (System/getProperty "os.name")))
+}]]
+
 array set runtime_label {
   clojure Clojure
   rebel {Clojure with Rebel Readline}
@@ -114,11 +119,11 @@ proc assert_terminal_cleanup {runtime transcript} {
 }
 
 proc assert_spinner_cleanup {runtime transcript} {
-  global clear_marker runtime_label
+  global clear_marker logo runtime_label
   if {[regexp -- {[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]} $transcript]} {
     fail "$runtime launch emitted the old braille spinner"
   }
-  set spinner_text "☯  Starting $runtime_label($runtime)..."
+  set spinner_text "$logo  Starting $runtime_label($runtime)..."
   set spinner_index [string first $spinner_text $transcript]
   set clear_index [string first $clear_marker($runtime) $transcript]
   if {$spinner_index < 0 || $clear_index <= $spinner_index} {

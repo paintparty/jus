@@ -1,5 +1,6 @@
 (ns repl-handoff.launch
-  (:require [clojure.java.io :as io])
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str])
   (:import (java.lang ProcessHandle)
            (java.math BigInteger)
            (java.nio.charset StandardCharsets)
@@ -59,6 +60,12 @@
 
 (def runtime-banner-outputs
   {:babashka :system-error})
+
+(defn logo
+  [os-name]
+  (if (str/starts-with? (str/lower-case (or os-name "")) "windows")
+    "◒"
+    "☯"))
 
 (defn- sha-256
   [value]
@@ -149,16 +156,19 @@
         (.waitFor))))
 
 (defn- start-spinner!
-  [state-path label target-pid]
-  (print (str "\r☯  Starting " label "..."))
+  [state-path label target-pid logo-character]
+  (print (str "\r" logo-character "  Starting " label "..."))
   (flush)
-  (let [spinner (-> (ProcessBuilder. ^java.util.List
-                     ["sh" spinner-control "run"
-                      state-path label (str target-pid)])
+  (let [builder (ProcessBuilder. ^java.util.List
+                 ["sh" spinner-control "run"
+                  state-path label (str target-pid)])
+        _ (.put (.environment builder) "JUS_SPINNER_LOGO" logo-character)
+        spinner (-> builder
                     (.inheritIO)
                     (.start))]
     (await-file! (str state-path java.io.File/separator "ready"))
     (str (.pid spinner))))
+
 
 (defn- exec-process!
   [environment command]
@@ -170,25 +180,27 @@
 (defn launch!
   [runtime]
   (let [working-directory (.getCanonicalPath (io/file "."))
-        label (or (get runtime-labels runtime)
-                  (throw (ex-info "Unknown spike runtime" {:runtime runtime})))
-        target-pid (.pid (ProcessHandle/current))
-        state-dir (.toFile (Files/createTempDirectory
-                            "jus-repl-handoff-"
-                            (make-array java.nio.file.attribute.FileAttribute 0)))
-        state-path (.getCanonicalPath state-dir)
-        spinner-pid (start-spinner! state-path label target-pid)
-        environment {"JUS_SPINNER_CONTROL" spinner-control
-                     "JUS_SPINNER_STATE" state-path
-                     "JUS_SPINNER_PID" spinner-pid
-                     "JUS_SPINNER_INIT" spinner-init
-                     "JUS_REPL_BANNER_LINES"
-                     (str (get runtime-banner-lines runtime 0))
-                     "JUS_REPL_BANNER_OUTPUT"
-                     (name (get runtime-banner-outputs runtime :println))}
-        _ (when (= :clojurescript runtime)
-            (.mkdirs (io/file (cljs-output-dir working-directory))))
-        command (runtime-command runtime working-directory)]
+        label             (or (get runtime-labels runtime)
+                              (throw (ex-info "Unknown spike runtime" {:runtime runtime})))
+        target-pid        (.pid (ProcessHandle/current))
+        state-dir         (.toFile (Files/createTempDirectory
+                                    "jus-repl-handoff-"
+                                    (make-array java.nio.file.attribute.FileAttribute 0)))
+        state-path        (.getCanonicalPath state-dir)
+        logo-character    (logo (System/getProperty "os.name"))
+        spinner-pid       (start-spinner! state-path label target-pid logo-character)
+        environment       {"JUS_SPINNER_CONTROL" spinner-control
+                           "JUS_SPINNER_LOGO"    logo-character
+                           "JUS_SPINNER_STATE"   state-path
+                           "JUS_SPINNER_PID"     spinner-pid
+                           "JUS_SPINNER_INIT"    spinner-init
+                           "JUS_REPL_BANNER_LINES"
+                           (str (get runtime-banner-lines runtime 0))
+                           "JUS_REPL_BANNER_OUTPUT"
+                           (name (get runtime-banner-outputs runtime :println))}
+        _                 (when (= :clojurescript runtime)
+                            (.mkdirs (io/file (cljs-output-dir working-directory))))
+        command           (runtime-command runtime working-directory)]
     (try
       (exec-process! environment command)
       (catch Exception exception
