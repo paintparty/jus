@@ -67,56 +67,52 @@
 (deftest opening-animation-converges-then-reveals-the-header-and-main-menu
   (with-redefs [animation/opening-animation? true
                 animation/confetti-animation :polar
-                config/global-config-path (constantly "/tmp/config.edn")
-                config/config-exists? (constantly false)]
-    (let [[opening command] (core/init)
-          finished-confetti (assoc-in opening
-                                      [:opening-animation :confetti]
-                                      {:animation :polar
-                                       :direction :in
-                                       :frame 0
-                                       :center {:row 0 :column 0}
-                                       :tracks []})
+                config/global-config-path    (constantly "/tmp/config.edn")
+                config/config-exists?        (constantly false)]
+    (let [[opening command]   (core/init)
+          finished-confetti   (assoc-in opening
+                                        [:opening-animation :confetti]
+                                        {:animation :polar
+                                         :direction :in
+                                         :frame     0
+                                         :center    {:row    0 
+                                                     :column 0}
+                                         :tracks    []})
           [header-0 header-command]
           (core/update-fn finished-confetti (msg/key-press "confetti-tick"))
-          [header-1 _] (core/update-fn header-0
-                                       (msg/key-press "opening-header-tick"))
-          [header-2 _] (core/update-fn header-1
-                                       (msg/key-press "opening-header-tick"))
-          [header-3 _] (core/update-fn header-2
-                                       (msg/key-press "opening-header-tick"))
-          [header-4 _] (core/update-fn header-3
-                                       (msg/key-press "opening-header-tick"))
-          [header-5 _] (core/update-fn header-4
-                                       (msg/key-press "opening-header-tick"))
-          [header-6 _] (core/update-fn header-5
-                                       (msg/key-press "opening-header-tick"))
+          [header-1 _]        (core/update-fn header-0
+                                              (msg/key-press "opening-header-tick"))
+          [header-2 _]        (core/update-fn header-1
+                                              (msg/key-press "opening-header-tick"))
+          [header-3 _]        (core/update-fn header-2
+                                              (msg/key-press "opening-header-tick"))
+          [header-4 _]        (core/update-fn header-3
+                                              (msg/key-press "opening-header-tick"))
+          [header-5 _]        (core/update-fn header-4
+                                              (msg/key-press "opening-header-tick"))
+          [header-6 _]        (core/update-fn header-5
+                                              (msg/key-press "opening-header-tick"))
           [menu menu-command] (core/update-fn
                                header-6
                                (msg/key-press "opening-header-tick"))
-          rendered-headers (mapv core/view
-                                 [header-0 header-1 header-2 header-3 header-4 header-5 header-6])
-          visible-headers (mapv (comp core/strip-ansi core/view)
-                                [header-0 header-1 header-2 header-3 header-4 header-5 header-6])
-          position-of (fn [rendered glyph]
-                        (some (fn [[row column ch]]
-                                (when (= glyph ch)
-                                  [row column]))
-                              (rendered-glyph-cells rendered)))
-          final-confetti (assoc (get-in opening
-                                        [:opening-animation :confetti])
-                                :frame (dec animation/reverse-confetti-total-frames))]
+          rendered-headers    (mapv core/view
+                                    [header-0 header-1 header-2 header-3 header-4 header-5 header-6])
+          visible-headers     (mapv (comp core/strip-ansi core/view)
+                                    [header-0 header-1 header-2 header-3 header-4 header-5 header-6])
+          position-of         (fn [rendered glyph]
+                                (some (fn [[row column ch]]
+                                        (when (= glyph ch)
+                                          [row column]))
+                                      (rendered-glyph-cells rendered)))
+          final-confetti      (assoc (get-in opening
+                                             [:opening-animation :confetti])
+                                     :frame (dec animation/reverse-confetti-total-frames))]
       (is (true? animation/opening-animation?))
       (is (= 42 animation/reverse-confetti-total-frames))
       (is (= 8 animation/reverse-confetti-frame-rate))
       (is (= 250 animation/post-confetti-blank-screen-pause))
-      (is (= ["\n  ☯"
-              "\n  ☯"
-              "\n  ☯ j"
-              "\n  ☯ ju"
-              "\n  ☯ jus"
-              "\n  ☯ jus"
-              "\n  ☯ jus"]
+      (is (= (mapv #(str "\n  " style/logo %)
+                   ["" "" " j" " ju" " jus" " jus" " jus"])
              visible-headers))
       (is (int? animation/opening-header-animation-frame-rate))
       (is (= :in (get-in opening [:opening-animation :confetti :direction])))
@@ -129,9 +125,10 @@
       (is (str/includes? (nth rendered-headers 6) (style/accent-italic "jus")))
       (is (= [(:row style/main-menu-logo-position)
               (:column style/main-menu-logo-position)]
-             (position-of (animation/render-confetti final-confetti 80 24) \☯)
-             (position-of (last rendered-headers) \☯)
-             (position-of (core/view menu) \☯)))
+             (position-of (animation/render-confetti final-confetti 80 24)
+                          (first style/logo))
+             (position-of (last rendered-headers) (first style/logo))
+             (position-of (core/view menu) (first style/logo))))
       (is (nil? (:opening-animation menu)))
       (is (str/includes? (core/strip-ansi (core/view menu)) "Main menu"))
       (is (nil? menu-command)))))
@@ -144,7 +141,7 @@
     (let [[opening _] (core/init)
           initial-view (core/strip-ansi (core/view opening))]
       (is (= 0 (get-in opening [:opening-animation :confetti :frame])))
-      (is (not (str/includes? initial-view "☯")))
+      (is (not (str/includes? initial-view style/logo)))
       (is (str/includes? initial-view "●")))))
 
 (deftest project-name-copy-follows-the-selected-template
@@ -430,18 +427,19 @@
     (is (= 4 (:menu-idx back-root)))))
 
 (deftest community-resource-menu-labels-follow-the-nested-menu-stack
-  (let [initial (assoc (core/main-menu-state example-global-config)
-                       :step :resources
-                       :menu-idx 5
-                       :resource-stack [data/community-resources]
-                       :resource-labels []
-                       :resource-menu-labels [])
+  (let [initial         (assoc (core/main-menu-state example-global-config)
+                               :step :resources
+                               :menu-idx 5
+                               :resource-stack [data/community-resources]
+                               :resource-labels []
+                               :resource-menu-labels [])
         [development _] (core/update-fn initial (msg/key-press :enter))
-        [back _] (core/update-fn development (msg/key-press :escape))
-        rendered (core/strip-ansi (core/view development))]
+        [back _]        (core/update-fn development (msg/key-press :escape))
+        rendered        (core/strip-ansi (core/view development))]
     (is (= "Select a dialect" (peek (:resource-menu-labels development))))
     (is (str/includes? rendered
-                       "☯ jus ╱ Community Resources ╱ Development"))
+                       (str style/logo
+                            " jus ╱ Community Resources ╱ Development")))
     (is (str/includes? rendered "Select a dialect"))
     (is (empty? (:resource-menu-labels back)))
     (is (not (str/includes? (core/strip-ansi (core/view back))
@@ -698,11 +696,11 @@
     (is (= :cmd (:type retry-command)))))
 
 (deftest spinner-frames-use-raw-dim-styling
-  (let [generation-view (core/view {:generation {:frame 2
+  (let [generation-view (core/view {:generation {:frame      2
                                                  :target-dir "/tmp/demo"}})]
     (is (= "\033[2m───\033[0m"
            (style/dim "───")))
-    (is (= ["☯ " "☯ " "  " "☯ "]
+    (is (= [(str style/logo " ") (str style/logo " ") "  " (str style/logo " ")]
            (mapv core/strip-ansi core/loading-spinner-frames)))
     (is (str/includes? (core/strip-ansi generation-view) "Creating new project..."))
     (is (str/includes? (core/strip-ansi generation-view) "Creating new project..."))))
@@ -1127,8 +1125,8 @@
            (set (filter #(= \● (peek %)) approaching))))
     (is (= #{[2 2 \●]}
            (set (filter #(= \● (peek %)) converged))))
-    (is (some #{[2 3 \☯]} converged))
-    (is (some #{[3 2 \☯]} converged))
+    (is (some #{[2 3 (first style/logo)]} converged))
+    (is (some #{[3 2 (first style/logo)]} converged))
     (let [long-track (mapv (fn [column] [0 column]) (range 374))
           final-frame (-> (animation/render-confetti
                            {:animation :polar
@@ -1139,7 +1137,7 @@
                            400
                            1)
                           rendered-glyph-cells)]
-      (is (= [[0 0 \☯]] final-frame)))))
+      (is (= [[0 0 (first style/logo)]] final-frame)))))
 
 (deftest laser-rays-preserve-the-pre-polar-animation
   (let [width 80
@@ -1172,7 +1170,7 @@
     (is (= 30 (count (animation/adaptive-ray-particles particles 22))))
     (is (= [19 31 37 43 46 49 52 55 58 61 64 67 70 73 76 79]
            (mapv first east-glyphs)))
-    (is (= (conj (vec (repeat (dec animation/confetti-ray-visible-chars) \☯)) \●)
+    (is (= (conj (vec (repeat (dec animation/confetti-ray-visible-chars) (first style/logo))) \●)
            (mapv second east-glyphs)))
     (is (every? #{\space}
                 (mapcat seq (str/split south-after-leaving #"\n" -1))))))
@@ -1223,8 +1221,8 @@
         converged (glyphs-at (dec animation/reverse-confetti-total-frames))]
     (is (= [[79 \●]] at-edge))
     (is (seq approaching))
-    (is (= [2 \☯] (first converged)))
-    (is (every? #{\☯} (map second converged)))))
+    (is (= [2 (first style/logo)] (first converged)))
+    (is (every? #{(first style/logo)} (map second converged)))))
 
 (deftest yin-yang-ray-explosion-fills-the-viewport-from-the-top-left
   (let [width     80
@@ -1263,8 +1261,8 @@
     (is (= height (count lines)))
     (is (every? #(= width (count %)) lines))
     (is (= {:x 0 :y 0 :bottom 0} padding))
-    (is (= \☯ (nth (nth first-intro-lines origin-y) origin-x)))
-    (is (= \☯ (nth (nth second-intro-lines origin-y) origin-x)))
+    (is (= (first style/logo) (nth (nth first-intro-lines origin-y) origin-x)))
+    (is (= (first style/logo) (nth (nth second-intro-lines origin-y) origin-x)))
     (is (= \● (nth (nth lines origin-y) origin-x)))
     (doseq [frame-lines [first-intro-lines second-intro-lines]]
       (is (= 1 (count (remove #{\space} (mapcat seq frame-lines))))))
@@ -1333,7 +1331,7 @@
       (is (= 8 (animation/confetti-ray-dimmed-chars)))
       (is (= [32 35 38 41 44 47 50 53 56 59 62 65 68 71 74 77]
              (mapv first east-glyphs)))
-      (is (= (conj (vec (repeat (dec animation/confetti-ray-visible-chars) \☯)) \●)
+      (is (= (conj (vec (repeat (dec animation/confetti-ray-visible-chars) (first style/logo))) \●)
              (mapv second east-glyphs)))
       (is (= [:d :d :d :d :d :d :d :d :n :d :d :n :d :n :n :n]
              (rendered-ray-style-profile 16)))

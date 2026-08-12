@@ -6,7 +6,13 @@
 
 ;; Icons
 (def error-prefix #_"▲ " "! ")
-(def logo "☯\uFE0E")
+
+(def windows?
+  (str/starts-with? (str/lower-case (System/getProperty "os.name" ""))
+                    "windows"))
+
+(def logo (if windows? "◒" "☯"))
+;; (def logo "\u262F\uFE0E")
 
 ;; Formatting
 (def margin-inline-start 2)

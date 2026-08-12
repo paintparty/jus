@@ -5,6 +5,7 @@
   {:unit        ['charm.render.core-test
                  'jus.tui.core-test
                  'jus.tui.repls-test
+                 'jus.tui.style-test
                  'jus.tui.tasks-test
                  'repl-handoff.launch-test]
    :integration ['jus.tui.config-test
@@ -17,7 +18,7 @@
     (get suites suite)))
 
 (defn- usage []
-  (str "Usage: clojure -M:test -m jus.tui.test-runner [unit|integration|all]\n"))
+  "Usage: clojure -M:test -m jus.tui.test-runner [unit|integration|all]\n")
 
 (defn -main
   [& args]
