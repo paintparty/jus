@@ -6,6 +6,7 @@
 
 ;; Icons
 (def error-prefix #_"▲ " "! ")
+(def logo "☯\uFE0E")
 
 ;; Formatting
 (def margin-inline-start 2)
