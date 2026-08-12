@@ -38,7 +38,7 @@
        (apply str (repeat (:column style/main-menu-logo-position) " "))))
 
 (def main-menu-logo
-  (str (style/accent "☯") " " (style/accent-italic "jus")))
+  (str (style/accent style/logo) " " (style/accent-italic "jus")))
 
 (def nav-separator (style/secondary " ╱ "))
 
@@ -481,10 +481,12 @@
          {:type  :config-creation-complete
           :error error})))))
 
-(def loading-spinner-frames ["☯ "
-                             (style/secondary "☯ ")
-                             "  "
-                             (style/secondary "☯ ")])
+(def loading-spinner-frames 
+  (let [logo-with-trailing-space (str style/logo " ")]
+    [logo-with-trailing-space
+     (style/secondary logo-with-trailing-space)
+     "  "
+     (style/secondary logo-with-trailing-space)]))
 
 (def shimmer-frames 10)
 (def shimmer-pause-frames 20)

@@ -21,7 +21,7 @@
 (def confetti-cell-aspect-ratio 2.0)
 (def sparse-ray? false)
 (def sparse-drop-even? false)
-(def confetti-ray-char "☯")
+(def confetti-ray-char style/logo)
 (def confetti-ray-leading-char "●")
 (def confetti-ray-visible-chars 16)
 (def ^:private confetti-ray-gradient-profile
@@ -39,7 +39,7 @@
 (defn- opening-header-animation-frame
   [word word-style]
   (str (main-menu-logo-prefix)
-       (style/accent (str "☯" (when (seq word) " ")))
+       (style/accent (str style/logo (when (seq word) " ")))
        (when (seq word)
          (word-style word))))
 
