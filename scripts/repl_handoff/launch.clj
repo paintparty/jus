@@ -64,7 +64,7 @@
 (defn logo
   [os-name]
   (if (str/starts-with? (str/lower-case (or os-name "")) "windows")
-    "◒"
+    "*"
     "☯"))
 
 (defn- sha-256

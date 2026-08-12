@@ -6,8 +6,8 @@
            (java.nio.file.attribute FileAttribute)))
 
 (def logo-fixtures
-  [["Windows 11" "◒"]
-   ["windows 10" "◒"]
+  [["Windows 11" "*"]
+   ["windows 10" "*"]
    ["Linux" "☯"]
    ["Mac OS X" "☯"]])
 
