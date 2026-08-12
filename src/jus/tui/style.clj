@@ -11,7 +11,7 @@
   (str/starts-with? (str/lower-case (System/getProperty "os.name" ""))
                     "windows"))
 
-(def logo (if windows? "◒" "☯"))
+(def logo (if windows? "◒" "◒" #_"☯"))
 ;; (def logo "\u262F\uFE0E")
 
 ;; Formatting

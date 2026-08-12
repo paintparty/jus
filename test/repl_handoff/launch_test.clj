@@ -8,8 +8,8 @@
 (def logo-fixtures
   [["Windows 11" "*"]
    ["windows 10" "*"]
-   ["Linux" "☯"]
-   ["Mac OS X" "☯"]])
+   ["Linux" "◒" #_"☯"]
+   ["Mac OS X" "◒" #_"☯"]])
 
 (deftest logo-follows-the-operating-system
   (doseq [[os-name expected] logo-fixtures]
