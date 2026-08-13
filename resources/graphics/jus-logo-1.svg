@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" height="30" width="30" viewBox="0 0 100 100">
+  <circle cx="50" cy="50" r="48" fill="none" stroke="currentColor" stroke-width="2"/>
+  <path transform="translate(100,0) scale(-1,1) rotate(70 50 50)"
+        d="M50,2
+           A48,48 0 0,1 50,98
+           A24,24 0 0,1 50,50
+           A24,24 0 0,0 50,2
+           Z" fill="currentColor"/>
+</svg>
