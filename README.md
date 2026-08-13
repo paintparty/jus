@@ -1,6 +1,7 @@
 <!-- <h1><span>&#x262F;&#xFE0E;</span> <i>jus</i></h1> -->
 
-# ◒ &nbsp;jus
+# &#x262F;&#xFE0E; &nbsp;jus
+<!-- # ◒ &nbsp;jus -->
 
 **A TUI app for Clojure dialects.**
 
