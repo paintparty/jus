@@ -7,12 +7,15 @@
 ;; Icons
 (def error-prefix #_"▲ " "! ")
 
-(def windows?
-  (str/starts-with? (str/lower-case (System/getProperty "os.name" ""))
-                    "windows"))
+(defn target-os? [s]
+  (str/starts-with? (str/lower-case (System/getProperty "os.name" "")) s))
 
-(def logo (if windows? "◒" "◒" #_"☯"))
-;; (def logo "\u262F\uFE0E")
+(def windows? (target-os? "windows"))
+(def linux? (target-os? "linux"))
+(def mac? (target-os? "mac"))
+(def not-mac? (not mac?))
+
+(def logo "◒" #_(if windows? "◒" "◒" #_"☯"))
 
 ;; Formatting
 (def margin-inline-start 2)

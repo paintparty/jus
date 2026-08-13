@@ -38,7 +38,9 @@
        (apply str (repeat (:column style/main-menu-logo-position) " "))))
 
 (def main-menu-logo
-  (str (style/accent style/logo) " " (style/accent-italic "jus")))
+  (str (style/accent style/logo) 
+       (if style/not-mac? "  " " ")
+       (style/accent-italic "jus")))
 
 (def nav-separator (style/secondary " ╱ "))
 
