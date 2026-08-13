@@ -1,6 +1,5 @@
 (ns jus.tui.generator-test
   (:require [jus.tui.generator :as generator]
-            [clojure.edn :as edn]
             [clojure.string :as str]
             [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files Path)
@@ -22,55 +21,55 @@
 (defn- file-exists? [path]
   (.exists (java.io.File. path)))
 
-(defn- command-options [command]
-  (->> (subvec command 5)
-       (partition 2)
-       (map (fn [[option value]]
-              [(edn/read-string option) (edn/read-string value)]))
-       (into {})))
-
 (deftest command-uses-the-pinned-deps-new-exec-function
   (let [request (assoc (generator-request :lib "/tmp/a project")
                        :description "quotes \" stay data; $HOME stays data")
-        command (generator/command request)]
-    (is (= ["clojure" "-Sdeps"] (subvec command 0 2)))
-    (is (= {:deps
-            '{io.github.seancorfield/deps-new
-              {:git/tag "v0.12.2"
-               :git/sha "465b303"}}}
-           (edn/read-string (nth command 2))))
-    (is (= ["-X" "org.corfield.new/lib"] (subvec command 3 5)))
+        command (generator/command request)
+        config-data (generator/config-data request)]
+    (is (= ["clojure" "-Srepro" "-X:jus/generate"] command))
+    (is (not-any? #(str/includes? % "\"") command))
+    (is (= '{io.github.seancorfield/deps-new
+             {:git/tag "v0.12.2"
+              :git/sha "465b303"}}
+           (:deps config-data)))
+    (is (= 'org.corfield.new/lib
+           (get-in config-data [:aliases :jus/generate :exec-fn])))
     (is (= {:name        "io.github.jus/generator-lib"
             :target-dir  "/tmp/a project"
             :developer   "jus tests"
             :description "quotes \" stay data; $HOME stays data"
             :license/id  "MIT"
             :build       :bb}
-           (command-options command)))))
+           (get-in config-data [:aliases :jus/generate :exec-args])))))
 
 (deftest command-omits-a-blank-description
-  (let [command (generator/command
-                 (assoc (generator-request :app "/tmp/example")
-                        :description "  "))]
-    (is (not (contains? (command-options command) :description)))))
+  (let [config-data (generator/config-data
+                     (assoc (generator-request :app "/tmp/example")
+                            :description "  "))]
+    (is (not (contains? (get-in config-data
+                                [:aliases :jus/generate :exec-args])
+                        :description)))))
 
 (deftest command-omits-an-absent-or-blank-developer
-  (let [without-developer (generator/command
+  (let [exec-args #(get-in (generator/config-data %)
+                           [:aliases :jus/generate :exec-args])
+        without-developer (exec-args
                            (dissoc (generator-request :app "/tmp/example")
                                    :developer))
-        blank-developer (generator/command
+        blank-developer (exec-args
                          (assoc (generator-request :app "/tmp/example")
                                 :developer "  "))]
-    (is (not (contains? (command-options without-developer) :developer)))
-    (is (not (contains? (command-options blank-developer) :developer)))))
+    (is (not (contains? without-developer :developer)))
+    (is (not (contains? blank-developer :developer)))))
 
 (deftest command-supports-project-rooted-source-options
-  (let [command (generator/command
-                 (assoc (generator-request :lib "/tmp/example")
-                        :top "example"
-                        :main "core"))]
-    (is (= "example" (:top (command-options command))))
-    (is (= "core" (:main (command-options command))))))
+  (let [config-data (generator/config-data
+                     (assoc (generator-request :lib "/tmp/example")
+                            :top "example"
+                            :main "core"))
+        exec-args (get-in config-data [:aliases :jus/generate :exec-args])]
+    (is (= "example" (:top exec-args)))
+    (is (= "core" (:main exec-args)))))
 
 (deftest command-rejects-options-outside-the-frozen-contract
   (let [request (generator-request :lib "/tmp/example")]
@@ -158,9 +157,12 @@
   (let [parent (temp-dir)
         target (str parent "/cancelled")]
     (try
-      (let [process (generator/start! (generator-request :app target))]
+      (let [process (generator/start! (generator-request :app target))
+            config-dir (str (::generator/config-dir process))
+            completion (future (generator/await! process))]
         (generator/cancel! process)
-        (is (not= 0 (:exit-code (generator/await! process))))
+        (is (map? @completion))
+        (is (not (file-exists? config-dir)))
         (generator/cleanup! target)
         (is (not (file-exists? target))))
       (finally

@@ -22,6 +22,10 @@
 
 (def ^:private cancellation-grace-ms 1000)
 
+(def ^:private config-cleanup-attempts 5)
+
+(def ^:private config-cleanup-retry-ms 50)
+
 (defn- template-name [template]
   (let [template (cond
                    (keyword? template) (name template)
@@ -56,25 +60,73 @@
         known   (keep #(find request %) option-order)]
     known))
 
-(defn- encode-option [[option value]]
-  [(pr-str option) (pr-str value)])
+(defn config-data
+  "Builds temporary Clojure CLI configuration for a deps-new request map.
 
-(defn command
-  "Builds the pinned JVM Clojure command for a deps-new request map.
-
-   Values are EDN-encoded as individual argv entries and are never interpolated
-   into a shell command. Blank descriptions are omitted so deps-new can supply
-   its template default."
+   Keeping EDN strings in a file avoids native Windows command-line quote
+   normalization. Blank descriptions are omitted so deps-new can supply its
+   template default."
   [request]
   (let [request  (validate-request request)
         template (template-name (:template request))]
-    (into ["clojure"
-           "-Sdeps"
-           (pr-str {:deps deps-new-coordinate})
-           "-X"
-           (str "org.corfield.new/" template)]
-          (mapcat encode-option)
-          (ordered-options request))))
+    {:deps deps-new-coordinate
+     :aliases
+     {:jus/generate
+      {:exec-fn (symbol "org.corfield.new" template)
+       :exec-args (into {} (ordered-options request))}}}))
+
+(defn command
+  "Builds the pinned JVM Clojure command for a prepared config directory."
+  [request]
+  (config-data request)
+  ["clojure" "-Srepro" "-X:jus/generate"])
+
+(defn- absolute-target-dir [target-dir]
+  (let [path (if (instance? Path target-dir)
+               target-dir
+               (Paths/get (str target-dir) (make-array String 0)))]
+    (str (-> ^Path path .toAbsolutePath .normalize))))
+
+(defn- delete-tree! [path]
+  (when (and path
+             (Files/exists ^Path path
+                           (into-array LinkOption [LinkOption/NOFOLLOW_LINKS])))
+    (with-open [paths (Files/walk ^Path path (make-array FileVisitOption 0))]
+      (doseq [entry (sort-by #(.getNameCount ^Path %) >
+                             (iterator-seq (.iterator paths)))]
+        (Files/deleteIfExists entry)))))
+
+(defn- config-cleanup [dir]
+  (delay
+    (loop [attempt 1]
+      (let [error (try
+                    (delete-tree! dir)
+                    nil
+                    (catch Exception error
+                      error))]
+        (cond
+          (nil? error) nil
+          (< attempt config-cleanup-attempts)
+          (do
+            (Thread/sleep config-cleanup-retry-ms)
+            (recur (inc attempt)))
+          :else nil)))))
+
+(defn- cleanup-config-dir! [dir]
+  (force (config-cleanup dir)))
+
+(defn- create-config-dir! [request]
+  (let [dir (Files/createTempDirectory
+             "jus-generator-"
+             (make-array java.nio.file.attribute.FileAttribute 0))]
+    (try
+      (let [request (update request :target-dir absolute-target-dir)]
+        (spit (.toFile (.resolve dir "deps.edn"))
+              (pr-str (config-data request)))
+        dir)
+      (catch Exception error
+        (cleanup-config-dir! dir)
+        (throw error)))))
 
 (defn- capture-stream-async [stream]
   (future
@@ -95,12 +147,20 @@
    Standard output and standard error are drained concurrently and captured
    rather than attached to the TUI terminal."
   [request]
-  (let [request (validate-request request)
-        process (.start (ProcessBuilder. ^java.util.List (command request)))]
-    {::process    process
-     ::out        (capture-stream-async (.getInputStream process))
-     ::err        (capture-stream-async (.getErrorStream process))
-     ::target-dir (:target-dir request)}))
+  (let [request    (validate-request request)
+        config-dir (create-config-dir! request)]
+    (try
+      (let [builder (ProcessBuilder. ^java.util.List (command request))
+            process (.start (.directory builder (.toFile config-dir)))]
+        {::process     process
+         ::out         (capture-stream-async (.getInputStream process))
+         ::err         (capture-stream-async (.getErrorStream process))
+         ::target-dir  (:target-dir request)
+         ::config-dir  config-dir
+         ::cleanup     (config-cleanup config-dir)})
+      (catch Exception e
+        (cleanup-config-dir! config-dir)
+        (throw e)))))
 
 (defn- process-from [handle]
   (or (::process handle)
@@ -110,22 +170,25 @@
 (defn await!
   "Waits for a process handle and returns {:exit-code int :out string :err string}."
   [handle]
-  (let [process (process-from handle)
-        exit-code (.waitFor process)]
-    (let [result {:exit-code exit-code
-                  :out       @(::out handle)
-                  :err       @(::err handle)}]
-      (if (zero? exit-code)
-        (try
-          (format-generated-bb-edn! (::target-dir handle))
-          result
-          (catch Exception e
-            (assoc result
-                   :exit-code 1
-                   :err (str (:err result)
-                             "\nFailed to format generated bb.edn: "
-                             (.getMessage e)))))
-        result))))
+  (let [process (process-from handle)]
+    (try
+      (let [exit-code (.waitFor process)
+            result {:exit-code exit-code
+                    :out       @(::out handle)
+                    :err       @(::err handle)}]
+        (if (zero? exit-code)
+          (try
+            (format-generated-bb-edn! (::target-dir handle))
+            result
+            (catch Exception e
+              (assoc result
+                     :exit-code 1
+                     :err (str (:err result)
+                               "\nFailed to format generated bb.edn: "
+                               (.getMessage e)))))
+          result))
+      (finally
+        (force (::cleanup handle))))))
 
 (defn cancel!
   "Terminates a running generator process.
@@ -142,6 +205,7 @@
       (when-not (.waitFor process cancellation-grace-ms TimeUnit/MILLISECONDS)
         (.destroyForcibly process)
         (.waitFor process)))
+    (force (::cleanup handle))
     nil))
 
 (defn- target-path [target-dir]
@@ -167,8 +231,5 @@
   (let [path (target-path target-dir)]
     (when (Files/exists path
                         (into-array LinkOption [LinkOption/NOFOLLOW_LINKS]))
-      (with-open [paths (Files/walk path (make-array FileVisitOption 0))]
-        (doseq [entry (sort-by #(.getNameCount ^Path %) >
-                               (iterator-seq (.iterator paths)))]
-          (Files/deleteIfExists entry))))
+      (delete-tree! path))
     nil))
