@@ -15,7 +15,7 @@
 (def mac? (target-os? "mac"))
 (def not-mac? (not mac?))
 
-(def logo "*" #_"◒" #_(if windows? "◒" "◒" #_"☯"))
+(def logo "◒" #_(if windows? "◒" "◒" #_"☯"))
 
 ;; Formatting
 (def margin-inline-start 2)
