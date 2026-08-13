@@ -60,6 +60,10 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
   <img src="resources/screens/motion/jus-tasks_dark-mode.gif#gh-dark-mode-only"></img>
 </p>
 
+<br>
+
+## Status
+Early days.
 
 <br>
 
