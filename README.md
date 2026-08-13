@@ -198,9 +198,3 @@ the Free Software Foundation, either version 2 of the License, or (at your
 option) any later version, with the GNU Classpath Exception which is available
 at https://www.gnu.org/software/classpath/license.html.
 
-
-I am reporting this account/repository because it appears to be a short-lived, substantially AI-generated SEO/reputation campaign targeting named individuals and a company, rather than a genuine FOSS/free-culture project.
-
-This project look alot like SEO spam. The repository appears designed for search indexing via Codeberg Pages, multilingual sitemaps, crawler-friendly robots.txt, and legal-looking AI-generated articles. It includes accusations about named people and a company, and seems to use Codeberg primarily as hosting for reputational/search visibility rather than shared FOSS.
-
-I understand this is separate from username availability. For transparency, I discovered this user and repo because I am interested in using the “jus” namespace for a legitimate project if Codeberg ever determines the current account violates policy and releases the name. The project, which I just released, is a fully-functioning TUI app for Clojure dialects. It is a beginner-friendly gateway to project creation, the REPL, running repo tasks, and exploring Clojure community resources. 
