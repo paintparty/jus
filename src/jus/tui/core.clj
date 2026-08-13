@@ -19,7 +19,7 @@
 
 (def project-created "  ✓ Project created")
 
-(def open-in-browser-icon "↗")
+(def open-in-browser-icon (if @style/windows-10? ">" "↗"))
 
 (def open-in-browser-suffix (str " " open-in-browser-icon " "))
 
