@@ -345,7 +345,8 @@
                 confetti-ray-leading-char
                 confetti-ray-char)]
     (if (= :dim style)
-      (if style/windows?
+      (style/dim glyph)
+      #_(if style/windows?
         (str "\033[38;5;244m" glyph "\033[0m")
         (style/dim glyph))
       glyph)))
