@@ -65,8 +65,7 @@
   [os-name]
   (if (str/starts-with? (str/lower-case (or os-name "")) "windows")
     "*"
-    "◒"
-    #_"☯"))
+    "◒"))
 
 (defn- sha-256
   [value]
