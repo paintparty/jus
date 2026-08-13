@@ -64,6 +64,36 @@
       (is (= :project-template (:step project)))
       (is (= {} (:global-config project))))))
 
+(deftest animations-default-to-on-except-on-windows
+  (doseq [[os-name expected]
+          [["Windows 11" false]
+           ["Windows Server 2025" false]
+           ["Mac OS X" true]
+           ["Linux" true]
+           ["Darwin" true]]]
+    (is (= expected (animation/animations-enabled-for-os? os-name))))
+  (let [expected (animation/animations-enabled-for-os?
+                  (System/getProperty "os.name"))]
+    (is (= expected animation/opening-animation?))
+    (is (= expected animation/closing-animation?)))
+  (with-redefs [animation/opening-animation? false
+                animation/closing-animation? false]
+    (let [main-menu (core/main-menu-state example-global-config)
+          [initialized opening-command]
+          (animation/initialize-main-menu main-menu)
+          [completed closing-command]
+          (core/update-fn
+           {:success-pause true
+            :confetti nil
+            :done? false}
+           (msg/key-press "success-pause-done"))]
+      (is (= main-menu initialized))
+      (is (nil? opening-command))
+      (is (false? (:success-pause completed)))
+      (is (nil? (:confetti completed)))
+      (is (true? (:done? completed)))
+      (is (= program/quit-cmd closing-command)))))
+
 (deftest opening-animation-converges-then-reveals-the-header-and-main-menu
   (with-redefs [animation/opening-animation? true
                 animation/confetti-animation :polar
@@ -655,12 +685,17 @@
         state (assoc (final-confirmation-state "/tmp/jus-config-offer")
                      :step :config-offer
                      :config-offer offer)
-        [skipped skip-command] (core/update-fn state (msg/key-press :escape))
+        skip-with-animation
+        (fn [state event]
+          (with-redefs [animation/closing-animation? true]
+            (core/update-fn state event)))
+        [skipped skip-command]
+        (skip-with-animation state (msg/key-press :escape))
         [ctrl-skipped ctrl-skip-command]
-        (core/update-fn state (msg/key-press "c" :ctrl true))
+        (skip-with-animation state (msg/key-press "c" :ctrl true))
         [skip-selected _] (core/update-fn state (msg/key-press :down))
         [selected-skip selected-skip-command]
-        (core/update-fn skip-selected (msg/key-press :enter))
+        (skip-with-animation skip-selected (msg/key-press :enter))
         [creating _] (core/update-fn state (msg/key-press :enter))
         [failed _] (core/update-fn creating
                                    {:type :config-creation-complete
@@ -881,7 +916,8 @@
                 :term-width    80
                 :term-height   24}
         [celebrating tick-command]
-        (core/update-fn paused (msg/key-press "success-pause-done"))
+        (with-redefs [animation/closing-animation? true]
+          (core/update-fn paused (msg/key-press "success-pause-done")))
         almost-done (assoc celebrating
                            :confetti {:animation :polar :frame 0 :tracks []})
         [blank pause-command]

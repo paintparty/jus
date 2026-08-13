@@ -34,7 +34,16 @@
 (def reverse-confetti-total-frames 42)
 (def reverse-confetti-frame-rate 8)
 (def post-confetti-blank-screen-pause 250)
-(def opening-animation? true)
+
+(defn animations-enabled-for-os?
+  [os-name]
+  (not (str/starts-with? (str/lower-case (or os-name "")) "windows")))
+
+(def opening-animation?
+  (animations-enabled-for-os? (System/getProperty "os.name")))
+
+(def closing-animation?
+  (animations-enabled-for-os? (System/getProperty "os.name")))
 
 (defn- opening-header-animation-frame
   [word word-style]

@@ -570,13 +570,10 @@
 
 (defn- skip-config-offer
   [state]
-  (let [confetti (animation/init-confetti (:term-width state) (:term-height state))]
-    [(assoc state
-            :config-creation nil
-            :config-error nil
-            :success-pause false
-            :confetti confetti)
-     (animation/confetti-tick-cmd (:direction confetti))]))
+  (animation/start-closing-animation
+   (assoc state
+          :config-creation nil
+          :config-error nil)))
 
 (defn- cancellation-error-message [action error]
   (str "Unable to " action " project generation: " (.getMessage error)
@@ -676,7 +673,7 @@
     (:success-pause state)
     (if (and (msg/key-press? msg)
              (= "success-pause-done" (:key msg)))
-      (animation/start-confetti state)
+      (animation/start-closing-animation state)
       [state nil])
 
     ;; Confetti animation
