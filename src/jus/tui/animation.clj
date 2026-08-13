@@ -570,6 +570,16 @@
             :confetti confetti)
      (confetti-tick-cmd (:direction confetti))]))
 
+(defn start-closing-animation
+  [state]
+  (if closing-animation?
+    (start-confetti state)
+    [(assoc state
+            :success-pause false
+            :confetti nil
+            :done? true)
+     program/quit-cmd]))
+
 (defn resize-confetti
   [confetti width height]
   (case (:animation confetti)
