@@ -11,20 +11,22 @@
 (defn target-os? [s]
   (str/starts-with? (str/lower-case (System/getProperty "os.name" "")) s))
 
-(defn windows-10? []
-  (let [build (-> (shell {:out :string} "cmd" "/c" "ver")
-                  :out
-                  (->> (re-find #"\[Version \d+\.\d+\.(\d+)"))
-                  second
-                  parse-long)]
-    (< build 22000)))
 (def windows? (target-os? "windows"))
+(def windows-10?
+  (delay
+    (and windows?
+         (let [build (-> (shell {:out :string} "cmd" "/c" "ver")
+                          :out
+                          (->> (re-find #"\[Version \d+\.\d+\.(\d+)"))
+                          second
+                          parse-long)]
+           (< build 22000)))))
 (def linux? (target-os? "linux"))
 (def mac? (target-os? "mac"))
 (def not-mac? (not mac?))
 
 #_"☯"
-(def logo (if windows-10? "*" "◒" ))
+(def logo (if @windows-10? "*" "◒" ))
 
 ;; Formatting
 (def margin-inline-start 2)
