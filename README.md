@@ -61,7 +61,8 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 <br>
 
 ## Requirements
-Babashka `v1.13.219`
+[Java](https://clojure.org/guides/install_clojure#java)
+[Babashka `v1.13.219`](https://github.com/babashka/babashka#installation)
 
 <br>
 

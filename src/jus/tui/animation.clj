@@ -46,13 +46,13 @@
 (def opening-header-animation-frames
   (mapv (fn [[word word-style]]
           (opening-header-animation-frame word word-style))
-        [[nil style/primary-italic]
-         [nil style/primary-italic]
-         ["j" style/primary-italic]
-         ["ju" style/primary-italic]
-         ["jus" style/primary-italic]
-         ["jus" style/accent-italic]
-         ["jus" style/accent-italic]]))
+        [[nil style/italic]
+         [nil style/italic]
+         ["j" style/italic]
+         ["ju" style/italic]
+         ["jus" style/italic]
+         ["jus" style/italic]
+         ["jus" style/italic]]))
 
 (def opening-header-animation-frame-rate 60)
 
@@ -345,7 +345,9 @@
                 confetti-ray-leading-char
                 confetti-ray-char)]
     (if (= :dim style)
-      (style/dim glyph)
+      (if style/windows?
+        (str "\033[38;5;244m" glyph "\033[0m")
+        (style/dim glyph))
       glyph)))
 
 (defn- init-laser-rays-confetti
