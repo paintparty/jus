@@ -39,7 +39,7 @@
 
 (def main-menu-logo
   (str (style/accent style/logo) 
-       (if style/not-mac? "  " " ")
+       " "
        (style/accent-italic "jus")))
 
 (def nav-separator (style/secondary " ╱ "))
