@@ -86,8 +86,8 @@
 
 (def ^:private picker-max-width 80)
 (def tasks-gap 0)
-(def tasks-animation-frame-rate 10)
-(def tasks-reveal-frame-rate 40)
+(def tasks-animation-frame-rate 5)
+(def tasks-reveal-frame-rate 20)
 (def tasks-animation-tick "tasks-animation-tick")
 
 (defn- primary
@@ -371,7 +371,6 @@
   Selecting a task runs `bb run <task>` attached directly to the terminal;
   Escape returns 0 and Ctrl-C returns 130."
   [tasks]
-  (print "\n")
   (flush)
   (let [result (program/run {:init       #(picker-init tasks)
                              :update     #'picker-update
