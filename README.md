@@ -103,6 +103,8 @@ jus tasks
 ## Roadmap 
 Based on usage patterns and subject to community feedback going forward, here is a short list of features being considered:
 
+- Support a [Quickstart/Fiddle wizard flow](https://github.com/paintparty/jus/issues/6)
+
 - Support idiomatic new project templates for various dialects. Currently, the new project wizard produces a deps.edn project structure and bb.edn for JVM clojure projects.
 
 - Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how **jus** currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
