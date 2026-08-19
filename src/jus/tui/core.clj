@@ -144,7 +144,7 @@
   (case step
     :project-template "Project type (creates a deps.edn project)"
     :project-name  "Project name"
-    :group         "Group ID for artifact (io.github.gbelson, com.hooli)"
+    :group         "Group ID for artifact (e.g., io.github.gbelson or com.hooli)"
     :source-layout "Source namespace layout"
     :developer     "Developer"
     :description   "Description"

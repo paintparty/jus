@@ -67,9 +67,11 @@
 (defn discover
   "Structurally reads only the supplied bb.edn path without evaluating it.
 
-  Returns ordered public tasks as {:status :ok :tasks [{:name string
-  :doc string} ...]}; missing and invalid configurations return distinct
-  structured status maps."
+   Returns ordered public tasks as
+   {:status :ok :tasks [{:name string :doc string} ...]}
+
+   Missing and invalid configurations return distinct
+   structured status maps."
   [bb-edn-path]
   (let [file (io/file bb-edn-path)
         path (.getAbsolutePath file)]
