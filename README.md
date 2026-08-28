@@ -28,6 +28,15 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 
 ## Features
 
+• &nbsp;  **Select and run bb tasks:**
+
+<p align="center">
+  <img src="resources/screens/motion/jus-tasks_light-mode.gif#gh-light-mode-only"></img>
+  <img src="resources/screens/motion/jus-tasks_dark-mode.gif#gh-dark-mode-only"></img>
+</p>
+
+<br>
+
 • &nbsp;  **Launch the ***New Project Wizard*** to scaffold a new Clojure [deps.edn](https://clojure.org/reference/deps_edn) project. More project types coming soon.**
 
 <p align="center">
@@ -53,12 +62,6 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
   <img src="resources/screens/motion/community-resources_dark-mode.gif#gh-dark-mode-only"></img>
 </p>
 
-• &nbsp;  **Select and run bb tasks:**
-
-<p align="center">
-  <img src="resources/screens/motion/jus-tasks_light-mode.gif#gh-light-mode-only"></img>
-  <img src="resources/screens/motion/jus-tasks_dark-mode.gif#gh-dark-mode-only"></img>
-</p>
 
 <br>
 
@@ -105,15 +108,30 @@ Based on usage patterns and subject to community feedback going forward, here is
 
 - Support a [Quickstart/Fiddle wizard flow](https://github.com/paintparty/jus/issues/6)
 
-- Support idiomatic new project templates for various dialects. Currently, the new project wizard produces a deps.edn project structure and bb.edn for JVM clojure projects.
+- Support idiomatic new project templates for additional dialects. Currently, the new project wizard produces a deps.edn project structure and bb.edn for JVM clojure projects. In order of priority, I would like to add support for:
+1 Babashka
+2 CLJS Browser
+3 CLJS Node
+4 Squint
+5 nbb
+6 Jolt
 
 - Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how **jus** currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
 
-- Discovery of libs/functions ala [The Clojure Toolbox](https://www.clojure-toolbox.com/), [clojure.land](https://clojure.land/), or [Cloogle](https://cloogle.phronemophobic.com/doc-search.html)
+- A search UI for discovery of libs/functions à la [The Clojure Toolbox](https://www.clojure-toolbox.com/), [clojure.land](https://clojure.land/), or [Cloogle](https://cloogle.phronemophobic.com/doc-search.html)
+
+- Creation of a floating modal-panel to leverage for contextual menus and alerts (info, errors, warnings, and query results).
 
 - Lightweight "My Projects" directory/dashboard
 
 - Automated "recent news" aggregator feed for people who want to limit their exposure to the UI of Slack, Reddit, etc.
+
+- Interactive discovery, via pregenerated menu (at TUI app lauch), of relevant info for Clojure development:
+  - Java/JDK version and install locations
+  - Clojure version and install location
+  - Clojure CLI tools installation status
+  - Similar info about other dialects such as Babashka
+  - If something that corresponds to one of these slots is not installed, the app could feature a CTA UI that would prompt the user to confirm installation process, which would exit the TUI and initiate the install.
 
 
 <br>
