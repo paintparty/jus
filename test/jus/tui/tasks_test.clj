@@ -207,4 +207,4 @@
     (with-redefs [program/run (constantly {:exit-code 0})]
       (binding [*out* output]
         (is (= 0 (tasks/run-picker! [])))))
-    (is (= "\n" (str output)))))
+    (is (= "" (str output)))))

@@ -34,6 +34,11 @@
           process (-> builder (.redirectErrorStream true) (.start))
           output (future (slurp (.getInputStream process)))]
       (try
+        (loop [attempt 0]
+          (when (and (< attempt 100)
+                     (not (.exists (.toFile (.resolve (.toPath state-dir) "ready")))))
+            (Thread/sleep 10)
+            (recur (inc attempt))))
         (Thread/sleep 650)
         (.destroy process)
         (let [rendered @output]

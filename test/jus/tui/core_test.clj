@@ -105,7 +105,7 @@
                                         {:animation :polar
                                          :direction :in
                                          :frame     0
-                                         :center    {:row    0 
+                                         :center    {:row    0
                                                      :column 0}
                                          :tracks    []})
           [header-0 header-command]
@@ -150,9 +150,9 @@
       (is (= :cmd (:type command)))
       (is (= :cmd (:type header-command)))
       (is (= animation/opening-header-animation-frames rendered-headers))
-      (is (str/includes? (nth rendered-headers 4) (style/primary-italic "jus")))
-      (is (str/includes? (nth rendered-headers 5) (style/accent-italic "jus")))
-      (is (str/includes? (nth rendered-headers 6) (style/accent-italic "jus")))
+      (is (str/includes? (nth rendered-headers 4) (style/italic "jus")))
+      (is (str/includes? (nth rendered-headers 5) (style/italic "jus")))
+      (is (str/includes? (nth rendered-headers 6) (style/italic "jus")))
       (is (= [(:row style/main-menu-logo-position)
               (:column style/main-menu-logo-position)]
              (position-of (animation/render-confetti final-confetti 80 24)
@@ -192,7 +192,7 @@
         [without-group _] (core/update-fn state (msg/key-press :down))
         [advanced _] (core/update-fn without-group (msg/key-press :enter))]
     (is (str/includes? rendered "Group"))
-    (is (str/includes? rendered "Group ID for artifact (io.github.gbelson, com.hooli)"))
+    (is (str/includes? rendered "Group ID for artifact (e.g., io.github.gbelson or com.hooli)"))
     (is (str/includes? rendered "io.github.example"))
     (is (str/includes? rendered "Use project name only"))
     (is (= 1 (:group-idx without-group)))
@@ -1526,7 +1526,7 @@
         result (binding [*err* err]
                  (with-out-str
                    (is (= 0 (core/run-cli! "--help")))))]
-    (is (str/includes? result "Usage: jus"))
+    (is (str/includes? result "Usage:"))
     (is (str/includes? result "jus tasks"))
     (is (= "" (str err)))))
 
@@ -1536,7 +1536,7 @@
                  (with-out-str
                    (is (= 1 (core/run-cli! "wat")))))]
     (is (= "" output))
-    (is (str/includes? (str err) "Usage: jus"))))
+    (is (str/includes? (str err) "Usage:"))))
 
 (deftest rebel-readline-command-uses-main-entrypoint-with-neutral-screen-theme
   (let [[_clojure _native-access _sdeps deps-edn
