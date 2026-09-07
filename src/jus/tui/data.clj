@@ -15,6 +15,9 @@
               {:label "Babashka"
                :desc  "Instant startup, SCI, GraalVM"
                :url   "https://babashka.org/"}
+              {:label "Jolt"
+               :desc  "Clojure on Chez Scheme"
+               :url   "https://github.com/jolt-lang"}
               {:label "List of Clojure-likes"
                :desc  "Compiled list of Clojure dialects"
                :url   "https://github.com/chr15m/awesome-clojure-likes"}
@@ -395,10 +398,7 @@
 
    {:label   "Curated Lists"
     :desc    "Curated lists of books, tools, blogs, etc."
-    :entries [{:label "Awesome Clojure"
-               :desc  "Libraries, tools, and resources"
-               :url   "https://github.com/razum2um/awesome-clojure"}
-              {:label "Books"
+    :entries [{:label "Books"
                :desc  "Official list of Clojure books"
                :url   "https://clojure.org/community/books"}
               {:label "Data Science Tools and Libraries"
@@ -409,4 +409,10 @@
                :url   "http://planet.clojure.in"}
               {:label "Excellent Clojure Learning Materials"
                :desc  "Opinionated curated resource collection"
-               :url   "https://gist.github.com/ssrihari/0bf159afb781eef7cc552a1a0b17786f"}]}])
+               :url   "https://gist.github.com/ssrihari/0bf159afb781eef7cc552a1a0b17786f"}
+              {:label "Awesome Clojure"
+               :desc  "Libraries, tools, and resources"
+               :url   "https://github.com/razum2um/awesome-clojure"}
+              {:label "Awesome Jolt"
+               :desc  "Libraries, tools, and resources for Jolt"
+               :url   "https://github.com/jlt-commons/awesome-jolt"}]}])
