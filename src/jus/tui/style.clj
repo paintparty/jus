@@ -8,9 +8,10 @@
 ;; Icons
 (def error-prefix #_"▲ " "! ")
 
+;; os utils 
+;; TODO - add these to util ns or a distinct lib 
 (defn target-os? [s]
   (str/starts-with? (str/lower-case (System/getProperty "os.name" "")) s))
-
 (def windows? (target-os? "windows"))
 (def windows-10?
   (delay
@@ -25,6 +26,7 @@
 (def mac? (target-os? "mac"))
 (def not-mac? (not mac?))
 
+;; Logo
 #_"☯"
 (def logo (if @windows-10? "*" "◒"))
 
