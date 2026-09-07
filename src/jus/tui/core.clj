@@ -1915,11 +1915,19 @@
                                                                                      
 (defn usage
   []
-  (str "Usage: jus [tasks|-h|--help]\n"
-       "\n"
-       "Commands:\n"
-       "  jus        Create a new Clojure project.\n"
-       "  jus tasks  Pick and run a public bb task from ./bb.edn.\n"))
+  (let [logo+link 
+        (str main-menu-logo
+             nav-separator
+             "A TUI app for Clojure dialects"
+             nav-separator
+             "https://github.com/paintparty/jus")]
+    (str "Usage:\n"
+         "  jus          Launch the TUI\n"
+         "  jus tasks    Pick and run a public bb task from ./bb.edn\n"
+         "  jus t        Shorthand for `jus tasks`\n"
+         "\n"
+         logo+link
+         "\n\n")))
 
 (defn- executable-available?
   [executable]
