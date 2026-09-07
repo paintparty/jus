@@ -190,7 +190,9 @@ To install the checkout as the normal command instead, use
 ## Contributing
 Issues for bugs, improvements, or features are very welcome.
 
-Please file an issue for discussion before starting or issuing a PR.
+Please file an issue for discussion before starting or submitting a PR.
+
+If you want to submit a PR against an open issue, start by dropping a message in the open issue before doing any work or issuing a PR, in order to initiate communication and make sure everyone is on the same page.
 
 If you have a feed that you want featured in the Community Resources section,
 please add it to one or more of the aggregators or curated lists that are

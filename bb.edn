@@ -1,25 +1,31 @@
 {:paths    ["src"]
- :deps     {dev.weavejester/cljfmt {:mvn/version "0.16.4"}
-            de.timokramer/charm.clj {:mvn/version "0.2.71"}
-            babashka/fs             {:mvn/version "0.5.22"}
+ :deps     {dev.weavejester/cljfmt  {:mvn/version "0.16.4"}
+            de.timokramer/charm.clj {:mvn/version "0.2.74"}
+            babashka/fs             {:mvn/version "0.5.34"}
+            babashka/process        {:mvn/version "0.6.25"}
             rewrite-clj/rewrite-clj {:mvn/version "1.1.49"}}
  :bbin/bin {jus {:main-opts ["-m" "jus.tui.core"]}}
- :tasks    {jus             {:doc  "Launch the jus TUI"
-                             :task (do (require '[jus.tui.core])
-                                       (apply (resolve 'jus.tui.core/-main)
-                                              *command-line-args*))}
-            test:unit       {:doc  "Run unit tests. Fast, deterministic. Run while devving."
-                             :task (shell "clojure" "-M:test" "-m"
-                                          "jus.tui.test-runner" "unit")}
-            test:integration {:doc  "Run filesystem and subprocess tests"
-                              :task (shell "clojure" "-M:test" "-m"
-                                           "jus.tui.test-runner" "integration")}
-            test            {:doc  "Unit + integration tests. Run before merging."
-                             :task (shell "clojure" "-M:test" "-m"
-                                          "jus.tui.test-runner" "all")}
-            test:e2e        {:doc  "Run terminal and REPL handoff tests. Run when changing terminal behavior, REPL handoff, process replacement, or runtime startup. E2e test suite uses real runtimes and PTYs, so it is slower and environment-dependent."
-                             :task (shell "scripts/repl-handoff-spike.exp")}
-            test:all        {:doc  "Unit + integration tests + e2e tests. Run before release."
-                             :task (do (shell "clojure" "-M:test" "-m"
-                                              "jus.tui.test-runner" "all")
-                                       (shell "scripts/repl-handoff-spike.exp"))}}}
+ :tasks    {jus                 {:doc  "Launch the jus TUI"
+                                 :task (do (require '[jus.tui.core])
+                                           (apply (resolve 'jus.tui.core/-main)
+                                                  *command-line-args*))}
+            test:unit           {:doc  "Run unit tests. Fast, deterministic. Run while developing."
+                                 :task (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "unit")}
+            test:integration    {:doc  "Run filesystem and subprocess tests"
+                                 :task (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "integration")}
+            test                {:doc  "Unit + integration tests. Run before merging."
+                                 :task (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "all")}
+            test:e2e            {:doc  "Run terminal and REPL handoff tests. Run when changing terminal behavior, REPL handoff, process replacement, or runtime startup. E2e test suite uses real runtimes and PTYs, so it is slower and environment-dependent."
+                                 :task (shell "scripts/repl-handoff-spike.exp")}
+            test:all            {:doc  "Unit + integration tests + e2e tests. Run before release."
+                                 :task (do (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "all")
+                                           (shell "scripts/repl-handoff-spike.exp"))}
+            install:jus-local   {:doc  "Installs this local checkout under the dev-safe command name `jus-local`. Runs `bbin install . --as jus-local`"
+                                 :task (shell "bbin" "install" "." "--as" "jus-local")}
+            install:jus         {:doc  "Installs this local checkout under the default command name `jus`. Runs `bbin install . --as jus`"
+                                 :task (shell "bbin" "install" "." "--as" "jus")}
+            uninstall:jus-local {:doc  "Uninstalls `jus-local`, if installed. Runs `bbin uninstall jus-local`"
+                                 :task (shell "bbin" "install" "." "--as" "jus-local")}
+            uninstall:jus       {:doc  "Uninstalls `jus`, if installed. Runs `bbin uninstall jus`"
+                                 :task (shell "bbin" "install" "." "--as" "jus")}
+            }}

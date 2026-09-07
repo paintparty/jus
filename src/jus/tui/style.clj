@@ -8,23 +8,28 @@
 ;; Icons
 (def error-prefix #_"▲ " "! ")
 
+;; os utils 
+;; TODO - add these to util ns or a distinct lib 
 (defn target-os? [s]
   (str/starts-with? (str/lower-case (System/getProperty "os.name" "")) s))
-
 (def windows? (target-os? "windows"))
 (def windows-10?
   (delay
-    (and windows?
-         (let [build (-> (shell {:out :string} "cmd" "/c" "ver")
-                          :out
-                          (->> (re-find #"\[Version \d+\.\d+\.(\d+)"))
-                          second
-                          parse-long)]
-           (< build 22000)))))
+    (try
+      (and windows?
+           (let [build (-> (shell {:out :string} "cmd" "/c" "ver")
+                           :out
+                           (->> (re-find #"\[Version \d+\.\d+\.(\d+)"))
+                           second
+                           parse-long)]
+             (< build 22000)))
+      (catch Exception _
+        false))))
 (def linux? (target-os? "linux"))
 (def mac? (target-os? "mac"))
 (def not-mac? (not mac?))
 
+;; Logo
 #_"☯"
 (def logo (if @windows-10? "*" "◒"))
 

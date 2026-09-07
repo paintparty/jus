@@ -21,11 +21,11 @@
 
 (defn- config-data
   ([]
-   (config-data "Jane Developer"))
+   (config-data "Gavin Belson"))
   ([developer]
    (config/project-config
-    {:groups ['io.github.example 'org.example]
-     :developers [developer "Example Company, LLC"]
+    {:groups ['io.github.gbelson 'com.hooli]
+     :developers [developer "Hooli, Inc."]
      :parent-dirs ["/tmp/projects" "/tmp/projects with spaces"]})))
 
 (defn- creation-result! [path data]
@@ -52,20 +52,20 @@
            (str (config/global-config-path nil "/home/example"))))))
 
 (deftest config-format-is-commented-deterministic-readable-edn
-  (let [data     (config-data "Jane \"JJ\" Developer")
+  (let [data     (config-data "Gavin Belson")
         expected (str
                   "{:tui\n"
                   " {;; Values used to populate the new project wizard pickers.\n"
                   "  :projects\n"
                   "  {\n"
-                  "  ;; Groups commonly used to publish projects.\n"
-                  "  ;; Typically written as a reverse-DNS groupID.\n"
-                  "  ;; Combined with the project name to form an identity such as org.foo/my-lib.\n"
-                  "  :groups        [io.github.example\n"
-                  "                  org.example]\n\n"
+                  "  ;; Organizations commonly used to publish projects.\n"
+                  "  ;; Combined with the project name to form an identity, e.g.:\n"
+                  "  ;; io.github.joeschmoe/my-lib, org.foo/my-lib\n"
+                  "  :groups        [io.github.gbelson\n"
+                  "                  com.hooli]\n\n"
                   "  ;; People or organizations credited in generated project metadata.\n"
-                  "  :developers    [\"Jane \\\"JJ\\\" Developer\"\n"
-                  "                  \"Example Company, LLC\"]\n\n"
+                  "  :developers    [\"Gavin Belson\"\n"
+                  "                  \"Hooli, Inc.\"]\n\n"
                   "  ;; Directories where new projects typically live.\n"
                   "  :parent-dirs   [\"/tmp/projects\"\n"
                   "                  \"/tmp/projects with spaces\"]}}}\n")
