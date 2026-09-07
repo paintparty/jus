@@ -2084,7 +2084,7 @@
     []
     (run-wizard!)
 
-    ["tasks"]
+    (["tasks"] ["t"])
     (if (preflight! ["bb"])
       (run-tasks!)
       1)
