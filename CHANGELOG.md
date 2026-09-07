@@ -13,8 +13,7 @@
 - Add `uninstall` versions of both new install tasks to the `jus` repo's own `bb.edn` (not the template), for streamlined uninstallation
 - Update contents and formatting of help menu
 - Add `jus t` shorthand for `jus tasks`
-- Added `jus t` shorthand for `jus tasks`
-- Added `babashka/process` dep
-- Bumped `babashka/fs` dep
-- Bumped `de.timokramer/charm.clj`dep
+- Add `babashka/process` dep
+- Bump `babashka/fs` dep
+- Bump `de.timokramer/charm.clj`dep
 - Updated tests
