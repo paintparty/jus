@@ -7,6 +7,7 @@
             [jus.tui.animation :as animation]
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
+            [jus.tui.installer :as installer]
             [jus.tui.style :as style]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]])
@@ -530,7 +531,8 @@
         [last-item _] (core/update-fn down (msg/key-press "j"))
         [clamped _] (core/update-fn last-item (msg/key-press :down))
         [up _] (core/update-fn clamped (msg/key-press "k"))
-        [launch launch-cmd] (core/update-fn up (msg/key-press :enter))
+        [launch launch-cmd] (with-redefs [installer/request (constantly {:missing []})]
+                              (core/update-fn up (msg/key-press :enter)))
         [back _] (core/update-fn down (msg/key-press :escape))
         [_ quit-cmd] (core/update-fn initial (msg/key-press "c" :ctrl true))
         rendered (core/strip-ansi (core/view initial))]
@@ -549,6 +551,34 @@
     (is (str/includes? rendered "Select REPL type"))
     (is (str/includes? rendered "Clojure                      JVM, default"))
     (is (str/includes? rendered "ClojureScript                JS"))))
+
+(deftest repl-installation-requires-explicit-confirmation
+  (let [request {:runtime :jolt :tools ["jolt"] :missing ["jolt"]
+                 :prefix "/private cache/local" :bootstrap? true}
+        initial (assoc (core/main-menu-state example-global-config)
+                       :step :repl-menu :menu-idx 4)]
+    (with-redefs [installer/request (constantly request)]
+      (let [[prompt command] (core/update-fn initial (msg/key-press :enter))
+            [cancelled cancel-command] (core/update-fn prompt (msg/key-press :enter))
+            [escaped _] (core/update-fn prompt (msg/key-press :escape))
+            [selected _] (core/update-fn prompt (msg/key-press :up))
+            [approved launch-command] (core/update-fn selected (msg/key-press :enter))
+            [quit quit-command] (core/update-fn prompt (msg/key-press "c" :ctrl true))
+            rendered (core/strip-ansi (core/view prompt))]
+        (is (= :repl-install (:step prompt)))
+        (is (= 1 (:install-idx prompt)))
+        (is (nil? command))
+        (is (= :repl-menu (:step cancelled) (:step escaped)))
+        (is (= 4 (:menu-idx cancelled) (:menu-idx escaped)))
+        (is (nil? (:install-request cancelled)))
+        (is (nil? cancel-command))
+        (is (= :repl (:action approved)))
+        (is (= request (:install-request approved)))
+        (is (= program/quit-cmd launch-command quit-command))
+        (is (= 130 (:exit-code quit)))
+        (doseq [text ["jolt" "/private cache/local" "https://in-1.cc"
+                     "Install and launch" "Cancel"]]
+          (is (str/includes? rendered text)))))))
 
 (defn- final-confirmation-state [parent]
   {:step           :path-confirm-final
@@ -1550,12 +1580,17 @@
            [main-flag main-opt module color-theme-flag color-theme]))))
 
 (deftest repl-replaces-the-babashka-process
-  (let [command  ["bb" "-cp" (#'core/repl-handoff-classpath)
+  (let [command  ["/test/bb" "-cp" (#'core/repl-handoff-classpath)
                   "-m" "repl-handoff.launch" "rebel"]
         executed (atom nil)]
-    (with-redefs-fn {#'core/babashka-runtime? (constantly true)
-                     #'core/exec-process! #(reset! executed %)
-                     #'core/run-child-process! (fn [_]
+    (with-redefs-fn {#'installer/request (constantly {:missing []})
+                     #'installer/install! (constantly {"PATH" "/test"})
+                     #'installer/find-executable (constantly "/test/bb")
+                     #'core/babashka-runtime? (constantly true)
+                     #'core/exec-process! (fn [environment command]
+                                           (is (= {"PATH" "/test"} environment))
+                                           (reset! executed command))
+                     #'core/run-child-process! (fn [_ _]
                                                  (throw (Exception. "unexpected child process")))}
       #(do
          (#'core/run-repl!)
@@ -1565,11 +1600,26 @@
            (is (.isDirectory classpath)))))))
 
 (deftest repl-waits-for-a-child-process-on-the-jvm
-  (with-redefs-fn {#'core/babashka-runtime? (constantly false)
-                   #'core/exec-process! (fn [_]
+  (with-redefs-fn {#'installer/request (constantly {:missing []})
+                   #'installer/install! (constantly {"PATH" "/test"})
+                   #'installer/find-executable (constantly "/test/bb")
+                   #'core/babashka-runtime? (constantly false)
+                   #'core/exec-process! (fn [_ _]
                                           (throw (Exception. "unexpected exec")))
                    #'core/run-child-process! (constantly 23)}
     #(is (= 23 (#'core/run-repl!)))))
+
+(deftest failed-installation-never-starts-the-handoff
+  (let [launched (atom false)
+        errors (java.io.StringWriter.)]
+    (with-redefs-fn {#'installer/install!
+                     (fn [_] (throw (ex-info "installation failed" {})))
+                     #'core/exec-process! (fn [& _] (reset! launched true))
+                     #'core/run-child-process! (fn [& _] (reset! launched true))}
+      #(binding [*err* errors]
+         (is (= 1 (#'core/run-repl! :jolt {:missing ["jolt"]})))))
+    (is (false? @launched))
+    (is (str/includes? (str errors) "installation failed"))))
 
 (deftest cli-launches-wizard-without-global-repl-preflights
   (let [checked (atom [])

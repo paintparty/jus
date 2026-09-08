@@ -9,6 +9,7 @@
             [jus.tui.config :as config]
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
+            [jus.tui.installer :as installer]
             [jus.tui.repls :as repls]
             [jus.tui.style :as style :refer [error-prefix]]
             [jus.tui.tasks :as tasks])
@@ -789,6 +790,26 @@
 
       :else [state nil])
 
+    (= :repl-install (:step state))
+    (cond
+      (msg/key-match? msg "ctrl+c")
+      [(assoc state :exit-code 130) program/quit-cmd]
+
+      (or (msg/key-match? msg :escape)
+          (and (msg/key-match? msg :enter) (= 1 (:install-idx state))))
+      [(-> state (assoc :step :repl-menu) (dissoc :install-request)) nil]
+
+      (msg/key-match? msg :up)
+      [(assoc state :install-idx 0) nil]
+
+      (msg/key-match? msg :down)
+      [(assoc state :install-idx 1) nil]
+
+      (msg/key-match? msg :enter)
+      [(assoc state :action :repl :error nil) program/quit-cmd]
+
+      :else [state nil])
+
     ;; Shared navigation for main, REPL, and resources menus.
     (menu-screen? (:step state))
     (cond
@@ -845,14 +866,12 @@
         :repl-menu
         (let [runtime (nth repls/options (:menu-idx state) nil)]
           (if runtime
-            (if-let [missing (some #(when-not (executable-available? %) %)
-                                   (:requires runtime))]
-              [(assoc state :error (repls/missing-executable-message missing)) nil]
-              [(assoc state
-                      :repl-id (:id runtime)
-                      :action :repl
-                      :error nil)
-               program/quit-cmd])
+            (let [request (installer/request (:id runtime))
+                  state (assoc state :repl-id (:id runtime) :error nil)]
+              (if (seq (:missing request))
+                [(assoc state :step :repl-install :install-idx 1
+                        :install-request request) nil]
+                [(assoc state :action :repl) program/quit-cmd]))
             [state nil]))
 
         :resources
@@ -1680,6 +1699,19 @@
          (not (:confetti state)))
     (render-menu-screen state)
 
+    (= :repl-install (:step state))
+    (let [{:keys [tools prefix bootstrap?]} (:install-request state)]
+      (str (main-menu-logo-prefix) main-menu-logo-with-nav
+           (style/italic "Install REPL tools")
+           "\n\n\n  Install missing tools: " (str/join ", " tools)
+           "\n  Destination: " prefix
+           (when bootstrap?
+             "\n  This also downloads in-1 from https://in-1.cc.")
+           "\n\n"
+           (render-list [{:label "Install and launch"} {:label "Cancel"}]
+                        (:install-idx state) (:term-width state))
+           (help-bar :repl-install) "\n"))
+
     ;; Generator subprocess progress
     (:generation state)
     (let [{:keys [frame]} (:generation state)
@@ -1975,16 +2007,15 @@
   (some? (System/getProperty "babashka.version")))
 
 (defn- exec-process!
-  [command]
+  [environment command]
   (require '[babashka.process])
-  (apply (resolve 'babashka.process/exec) command))
+  (apply (resolve 'babashka.process/exec) {:env environment} command))
 
 (defn- run-child-process!
-  [command]
-  (-> (ProcessBuilder. ^java.util.List command)
-      (.inheritIO)
-      (.start)
-      (.waitFor)))
+  [environment command]
+  (let [builder (ProcessBuilder. ^java.util.List command)]
+    (.putAll (.environment builder) environment)
+    (-> builder (.inheritIO) (.start) (.waitFor))))
 
 (defn- repl-handoff-classpath []
   (let [resource (io/resource "jus/tui/core.clj")]
@@ -2002,13 +2033,19 @@
 
 (defn- run-repl!
   ([] (run-repl! :rebel))
-  ([runtime]
+  ([runtime] (run-repl! runtime nil))
+  ([runtime approved]
    (try
-     (let [command ["bb" "-cp" (repl-handoff-classpath) "-m" "repl-handoff.launch"
+     (let [request (or approved (installer/request runtime))
+           _ (when (and (nil? approved) (seq (:missing request)))
+               (throw (ex-info "REPL installation requires confirmation" {})))
+           environment (installer/install! request)
+           bb (installer/find-executable "bb" (get environment "PATH"))
+           command [bb "-cp" (repl-handoff-classpath) "-m" "repl-handoff.launch"
                     (name runtime)]]
        (if (babashka-runtime?)
-         (exec-process! command)
-         (run-child-process! command)))
+         (exec-process! environment command)
+         (run-child-process! environment command)))
      (catch Exception exception
        (binding [*out* *err*]
          (println "Unable to start REPL:" (.getMessage exception)))
@@ -2038,7 +2075,9 @@
                       :alt-screen true})]
     (cond
       (= :repl (:action final-state))
-      (run-repl! (:repl-id final-state))
+      (if-let [approved (:install-request final-state)]
+        (run-repl! (:repl-id final-state) approved)
+        (run-repl! (:repl-id final-state)))
 
       (:done? final-state)
       (or (:exit-code final-state) 0)

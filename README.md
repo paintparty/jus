@@ -17,6 +17,33 @@ Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKram
 
 Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new).
 
+When a selected REPL needs missing tools, Jus asks before installing them
+through in-1.
+Cancel is selected by default; Escape returns to the REPL menu.
+Approval closes the TUI, shows installation progress, and starts the REPL.
+If in-1 is unavailable, the confirmation also discloses its download from
+https://in-1.cc.
+
+Tools are kept in `$XDG_CACHE_HOME/jus/in-1/local`, falling back to
+`~/.cache/jus/in-1/local`.
+Existing commands on PATH take precedence over the private cache.
+Cached commands are available only to Jus's child processes; no shell startup
+files or project configuration are changed.
+Failed installations stop the launch and can be retried by selecting the REPL
+again.
+
+For a Makes-managed development install, set `JUS-SOURCE` to the absolute path
+of this checkout and choose a distinct `JUS-VERSION` to avoid reusing a
+published installation:
+
+```bash
+in-1 jus JUS-SOURCE="$PWD" JUS-VERSION=dev
+```
+
+The default Makes installation still uses the published Jus tag.
+Use a fresh development version, or uninstall the development installation,
+when testing further checkout changes.
+
 <br>
 
 <p align="center">
@@ -219,4 +246,3 @@ Public License, v. 2.0 are satisfied: GNU General Public License as published by
 the Free Software Foundation, either version 2 of the License, or (at your
 option) any later version, with the GNU Classpath Exception which is available
 at https://www.gnu.org/software/classpath/license.html.
-

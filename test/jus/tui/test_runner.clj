@@ -5,6 +5,7 @@
   {:unit        ['charm.render.core-test
                  'jus.tui.core-test
                  'jus.tui.repls-test
+                 'jus.tui.installer-test
                  'jus.tui.style-test
                  'jus.tui.tasks-test
                  'repl-handoff.launch-test]
