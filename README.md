@@ -79,14 +79,59 @@ Early days.
 <br>
 
 ## Installation
+
+You can install jus via `in-1` or `bbin`
+
+### Install with `in-1`
+
+```
+source <(curl -sL in-1.cc) in-1 && in-1 --local jus
+```
+You can also do a temporal installation, which is only active for the current shell session. Same invocation as above, without the `--local` flag. The trailing ` && jus` auto-launches the jus TUI after install:
+```
+source <(curl -sL in-1.cc) in-1 && in-1 jus && jus
+```
+<br>
+
+If you've already installed `in-1`, you can do the above local like so:
+```
+in-1 --local jus
+```
+Or temporal installation, which is only active for the current shell session:
+```
+in-1 jus
+```
+
+#### Uninstall with `in-1`
+```
+source <(curl -sL in-1.cc) in-1 && in-1 --uninstall jus
+```
+Or, if you've already installed `in-1`
+```
+in-1 --uninstall jus
+```
+<br>
+
+### Install with `bbin`
 First, [follow these instructions](https://github.com/babashka/bbin#installation) to install `bbin`, if it is not already installed.
 
-Then install **jus**:
+Then install jus:
+
+```
+bbin install io.github.paintparty/jus
+```
+First, [follow these instructions](https://github.com/babashka/bbin#installation) to install `bbin`, if it is not already installed.
+
+Then install jus:
 
 ```
 bbin install io.github.paintparty/jus
 ```
 
+#### Uninstall with `bbin`
+```
+bbin uninstall jus
+```
 <br>
 
 ## Usage
@@ -99,6 +144,10 @@ jus
 If your project has a `bb.edn` file with `tasks` defined, you can interactively browse and select tasks:
 ```
 jus tasks
+```
+Shorthand for `jus tasks`
+```
+jus t
 ```
 
 <br>
@@ -116,7 +165,7 @@ Based on usage patterns and subject to community feedback going forward, here is
 5 nbb
 6 Jolt
 
-- Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how **jus** currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
+- Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how jus currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
 
 - A search UI for discovery of libs/functions à la [The Clojure Toolbox](https://www.clojure-toolbox.com/), [clojure.land](https://clojure.land/), or [Cloogle](https://cloogle.phronemophobic.com/doc-search.html)
 
