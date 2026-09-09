@@ -120,13 +120,6 @@ Then install jus:
 ```
 bbin install io.github.paintparty/jus
 ```
-First, [follow these instructions](https://github.com/babashka/bbin#installation) to install `bbin`, if it is not already installed.
-
-Then install jus:
-
-```
-bbin install io.github.paintparty/jus
-```
 
 #### Uninstall with `bbin`
 ```
