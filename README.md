@@ -101,7 +101,7 @@ To install `jus` (more permanently) in `$HOME/.local/bin/jus`, run:
 
 ```
 source <(curl -sL in-1.cc) --local in-1   # First install ~/.local/bin/in-1
-in-1 jus   # Then install jus (or anything else) in ~/.local/bin/jus
+in-1 jus                                  # Then install jus (or anything else) in ~/.local/bin/jus
 ```
 
 > Note: `--local` is just shorthand for `PREFIX=$HOME/.local`, which you can use to install to some other place. Just be sure that `$PREFIX/bin` is in your `PATH`.
