@@ -84,32 +84,32 @@ You can install jus via `in-1` or `bbin`
 
 ### Install with `in-1`
 
-```
-source <(curl -sL in-1.cc) in-1 && in-1 --local jus
-```
-You can also do a temporal installation, which is only active for the current shell session. Same invocation as above, without the `--local` flag. The trailing ` && jus` auto-launches the jus TUI after install:
-```
-source <(curl -sL in-1.cc) in-1 && in-1 jus && jus
-```
-<br>
+[in-1](https://in-1.cc) is a very simple way to install lots of things quickly and with no prerequisites.
 
-If you've already installed `in-1`, you can do the above local like so:
+> Note: `in-1` works for Bash, Zah and Fish. See [the install page](https://in-1.cc/install/) specifics.
+
+To try `jus` without installing it permanently, just run:
+
 ```
-in-1 --local jus
+source <(curl -sL in-1.cc) jus    # Bash or Zsh
+curl -sL in-1.cc | source - jus   # Fish shell
 ```
-Or temporal installation, which is only active for the current shell session:
+
+The `jus` command will be installed in `/tmp/in-1/bin/jus` and then `/tmp/in-1/bin` will be added to your `PATH`. That means `jus` is only available in the shell you installed it into.
+
+To install `jus` (more permanently) in `$HOME/.local/bin/jus`, run:
+
 ```
-in-1 jus
+source <(curl -sL in-1.cc) --local in-1   # First install ~/.local/bin/in-1
+in-1 jus   # Then install jus (or anything else) in ~/.local/bin/jus
 ```
+
+> Note: `--local` is just shorthand for `PREFIX=$HOME/.local`, which you can use to install to some other place. Just be sure that `$PREFIX/bin` is in your `PATH`.
 
 #### Uninstall with `in-1`
-```
-source <(curl -sL in-1.cc) in-1 && in-1 --uninstall jus
-```
-Or, if you've already installed `in-1`
-```
-in-1 --uninstall jus
-```
+
+To uninstall `jus`, just run `in-1 --uninstall jus`.
+
 <br>
 
 ### Install with `bbin`
