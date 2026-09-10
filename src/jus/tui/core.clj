@@ -10,6 +10,7 @@
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
             [jus.tui.repls :as repls]
+            [jus.tui.repl-installer :as installer]
             [jus.tui.style :as style :refer [error-prefix]]
             [jus.tui.tasks :as tasks])
   (:import (java.lang ProcessBuilder$Redirect)
@@ -31,14 +32,13 @@
   "Number of spaces between columns in menu rows."
   3)
 
-
 (defn- main-menu-logo-prefix
   []
   (str (apply str (repeat (:row style/main-menu-logo-position) "\n"))
        (apply str (repeat (:column style/main-menu-logo-position) " "))))
 
 (def main-menu-logo
-  (str style/logo 
+  (str style/logo
        " "
        (style/italic "jus")))
 
@@ -159,8 +159,7 @@
   (if (zero? (:template-idx state))
     "Library name"
     "Project name"))
-                                                                                                            
-                                                                                                            
+
 ;;     SSSSSSSSSSSSSSS TTTTTTTTTTTTTTTTTTTTTTT         AAA         TTTTTTTTTTTTTTTTTTTTTTTEEEEEEEEEEEEEEEEEEEEEE
 ;;   SS:::::::::::::::ST:::::::::::::::::::::T        A:::A        T:::::::::::::::::::::TE::::::::::::::::::::E
 ;;  S:::::SSSSSS::::::ST:::::::::::::::::::::T       A:::::A       T:::::::::::::::::::::TE::::::::::::::::::::E
@@ -177,8 +176,6 @@
 ;;  S::::::SSSSSS:::::S      T:::::::::T  A:::::A               A:::::A  T:::::::::T      E::::::::::::::::::::E
 ;;  S:::::::::::::::SS       T:::::::::T A:::::A                 A:::::A T:::::::::T      E::::::::::::::::::::E
 ;;   SSSSSSSSSSSSSSS         TTTTTTTTTTTAAAAAAA                   AAAAAAATTTTTTTTTTT      EEEEEEEEEEEEEEEEEEEEEE
-                                                                                                            
-                                                                                                            
 
 (defn project-wizard-state
   "Returns a fresh Project wizard state from a loaded Global config."
@@ -483,7 +480,7 @@
          {:type  :config-creation-complete
           :error error})))))
 
-(def loading-spinner-frames 
+(def loading-spinner-frames
   (let [logo-with-trailing-space (str style/logo " ")]
     [logo-with-trailing-space
      (style/secondary logo-with-trailing-space)
@@ -623,7 +620,6 @@
     (catch Exception _
       false)))
 
-                                                                                                                                 
 ;; UUUUUUUU     UUUUUUUUPPPPPPPPPPPPPPPPP   DDDDDDDDDDDDD                  AAA         TTTTTTTTTTTTTTTTTTTTTTTEEEEEEEEEEEEEEEEEEEEEE
 ;; U::::::U     U::::::UP::::::::::::::::P  D::::::::::::DDD              A:::A        T:::::::::::::::::::::TE::::::::::::::::::::E
 ;; U::::::U     U::::::UP::::::PPPPPP:::::P D:::::::::::::::DD           A:::::A       T:::::::::::::::::::::TE::::::::::::::::::::E
@@ -640,8 +636,105 @@
 ;;   UU:::::::::::::UU  P::::::::P          D:::::::::::::::DDA:::::A               A:::::A  T:::::::::T      E::::::::::::::::::::E
 ;;     UU:::::::::UU    P::::::::P          D::::::::::::DDD A:::::A                 A:::::A T:::::::::T      E::::::::::::::::::::E
 ;;       UUUUUUUUU      PPPPPPPPPP          DDDDDDDDDDDDD   AAAAAAA                   AAAAAAATTTTTTTTTTT      EEEEEEEEEEEEEEEEEEEEEE
-                                                                                                                                 
-                                                                                                                                 
+
+(defn- repl-install-items
+  [runtime]
+  (let [{:keys [label installer guide]} (repls/option runtime)
+        command (str "source <(curl -fsSL https://in-1.cc) ")
+        args (if (= runtime :gloat) " --repl" "")]
+    [{:label (str "Install " label ", Temporary") :mode :temporary
+      :desc (str command "--temp " installer " && " installer args)
+      :helper (str "Temporary installation using [in-1](https://in-1.cc). "
+                   "Files remain in temporary storage until cleaned. "
+                   "Requires Bash, Git, curl and GNU make.")}
+     {:label (str "Install " label ", Persistent") :mode :persistent
+      :desc (str command "--local " installer " PREFIX=\"$HOME/.local\" && " installer args)
+      :helper (str "Local installation using [in-1](https://in-1.cc). "
+                   "Installs " label " in `$HOME/.local/bin/" installer "`. "
+                   "Requires Bash, Git, curl and GNU make.")}
+     {:label (str "View " label " Install Guide") :url guide
+      :desc (str "Official " label " installation info")
+      :helper (str "[" guide "](" guide ")")}
+     {:label "Instant Dialect Commands" :url "https://clojure.cc/try/"
+      :desc "Learn more at clojure.cc/try"
+      :helper "[https://clojure.cc/try/](https://clojure.cc/try/)"}
+     {:label "Cancel" :desc "Returns to previous REPL dialects menu"
+      :helper "Return to the REPL dialects menu."}]))
+
+(defn- return-to-repls
+  [state]
+  (-> state
+      (assoc :step :repl-menu :menu-idx (or (:repl-menu-idx state) 0)
+             :error nil :action nil)
+      (dissoc :repl-install :repl-executable)))
+
+(defn- repl-install-tick-cmd
+  [operation]
+  (program/cmd (fn [] (Thread/sleep loading-spinner-frame-ms)
+                 {:type :repl-install-tick :operation operation})))
+
+(defn- begin-repl-install
+  [state mode]
+  (try
+    (let [operation (str (java.util.UUID/randomUUID))
+          handle (installer/start! {:runtime (:repl-id state) :mode mode})]
+      [(assoc state :step :repl-installing :error nil
+              :repl-install {:operation operation :handle handle :frame 0})
+       (program/batch
+        (program/cmd (fn []
+                       {:type :repl-install-complete :operation operation
+                        :result (try (installer/await! handle)
+                                     (catch Exception e {:status :failed :error (.getMessage e)}))}))
+        (repl-install-tick-cmd operation))])
+    (catch Exception e
+      [(assoc state :step :repl-error :menu-idx 0 :error (.getMessage e)) nil])))
+
+(defn- update-repl-install
+  [state message]
+  (let [{:keys [operation handle cancel-action]} (:repl-install state)
+        ctrl-c? (msg/key-match? message "ctrl+c")
+        escape? (msg/key-match? message :escape)]
+    (cond
+      (= :repl-installing (:step state))
+      (cond
+        (or ctrl-c? escape?)
+        (do (installer/cancel! handle)
+            [(assoc-in state [:repl-install :cancel-action]
+                       (if (or ctrl-c? (= cancel-action :exit)) :exit :return)) nil])
+
+        (and (= operation (:operation message))
+             (= :repl-install-complete (:type message)))
+        (let [{:keys [status executable error diagnostics]} (:result message)]
+          (cond
+            (= cancel-action :exit)
+            [(assoc (return-to-repls state) :done? true :exit-code 130) program/quit-cmd]
+            (or cancel-action (= status :cancelled)) [(return-to-repls state) nil]
+            (= status :installed)
+            [(assoc state :repl-install nil :repl-executable executable :action :repl) program/quit-cmd]
+            :else
+            [(assoc state :step :repl-error :menu-idx 0 :repl-install nil
+                    :error (str error (when (seq diagnostics) (str "\n" diagnostics)))) nil]))
+
+        (and (= operation (:operation message)) (= :repl-install-tick (:type message)))
+        [(update-in state [:repl-install :frame] inc) (repl-install-tick-cmd operation)]
+        :else [state nil])
+
+      ctrl-c? [(assoc state :exit-code 130 :done? true) program/quit-cmd]
+      escape? [(return-to-repls state) nil]
+      (= :repl-error (:step state))
+      (if (msg/key-match? message "enter") [(return-to-repls state) nil] [state nil])
+      (msg/key-match? message "enter")
+      (let [{:keys [mode url]} (nth (repl-install-items (:repl-id state)) (:menu-idx state))]
+        (cond mode (begin-repl-install state mode)
+              url (if (open-url! url) [state nil]
+                      [(assoc state :step :repl-error :menu-idx 0
+                              :error (str "Unable to open " url ". Open it manually in your browser.")) nil])
+              :else [(return-to-repls state) nil]))
+      (or (msg/key-match? message :up) (msg/key-match? message "k"))
+      [(update state :menu-idx #(max 0 (dec %))) nil]
+      (or (msg/key-match? message :down) (msg/key-match? message "j"))
+      [(update state :menu-idx #(min 4 (inc %))) nil]
+      :else [state nil])))
 
 (defn update-fn
   "Charm.clj update. Dispatches on animation state, then wizard step."
@@ -650,6 +743,12 @@
     ;; Keep viewport dimensions current during every background phase.
     (msg/window-size? msg)
     [(animation/resize-state state msg) nil]
+
+    (#{:repl-install-menu :repl-installing :repl-error} (:step state))
+    (update-repl-install state msg)
+
+    (#{:repl-install-complete :repl-install-tick} (:type msg))
+    [state nil]
 
     ;; Opening inward confetti → header reveal → full main menu.
     (:opening-animation state)
@@ -843,17 +942,22 @@
           [state nil])
 
         :repl-menu
-        (let [runtime (nth repls/options (:menu-idx state) nil)]
-          (if runtime
-            (if-let [missing (some #(when-not (executable-available? %) %)
-                                   (:requires runtime))]
-              [(assoc state :error (repls/missing-executable-message missing)) nil]
-              [(assoc state
-                      :repl-id (:id runtime)
-                      :action :repl
-                      :error nil)
-               program/quit-cmd])
-            [state nil]))
+        (let [runtime (nth (repls/available-options) (:menu-idx state) nil)]
+          (if-not runtime
+            [state nil]
+            (if (and (:installer runtime) (repls/installation-supported?))
+              (try
+                (let [selected (assoc state :repl-id (:id runtime)
+                                      :repl-menu-idx (:menu-idx state) :error nil)]
+                  (if-let [executable (repls/discover (:id runtime))]
+                    [(assoc selected :repl-executable executable :action :repl) program/quit-cmd]
+                    [(assoc selected :step :repl-install-menu :menu-idx 0) nil]))
+                (catch Exception e
+                  [(assoc state :step :repl-error :repl-menu-idx (:menu-idx state)
+                          :menu-idx 0 :error (.getMessage e)) nil]))
+              (if-let [missing (some #(when-not (executable-available? %) %) (:requires runtime))]
+                [(assoc state :error (repls/missing-executable-message missing)) nil]
+                [(assoc state :repl-id (:id runtime) :action :repl :error nil) program/quit-cmd]))))
 
         :resources
         (let [{:keys [entries url label menu-label]} (nth (resource-items state)
@@ -888,7 +992,7 @@
                (msg/key-match? msg "j")))
       (let [limit (case (:step state)
                     :main-menu (dec (count (main-menu-items)))
-                    :repl-menu (dec (count repls/options))
+                    :repl-menu (dec (count (repls/available-options)))
                     :resources (dec (count (resource-items state)))
                     0)]
         [(cond-> (update state :menu-idx #(min limit (inc (or % 0))))
@@ -1601,6 +1705,81 @@
     :logo   (str "  " logo "\n\n" (render-step-progress state))
     (render-step-progress state)))
 
+(defn- fit-repl-text
+  [text width]
+  (let [text (str text) width (max 0 width)]
+    (if (<= (count text) width) text
+        (if (< width 2) (subs text 0 width) (str (subs text 0 (dec width)) "…")))))
+
+(defn- render-repl-rows
+  [items selected width height separators?]
+  (let [inner (max 4 (- width 4))
+        capacity (max 1 height)
+        start (min (max 0 (- (count items) capacity)) (max 0 (- selected (dec capacity))))
+        visible (subvec (vec items) start (min (count items) (+ start capacity)))
+        label-width (apply max 0 (map #(count (:label %)) items))
+        border (fn [left right] (str " " (style/sgr "2" (str left (apply str (repeat inner "─")) right))))
+        rows (mapcat
+              (fn [i {:keys [label desc description url]}]
+                (let [index (+ start i)
+                      focused? (= index selected)
+                      suffix (if (and focused? url) open-in-browser-suffix "")
+                      label-room (max 1 (- inner 3 (count suffix)))
+                      content (str (if focused? " > " "   ")
+                                   (fit-repl-text
+                                    (str (format (str "%-" (max 1 label-width) "s") label)
+                                         "  " (or desc description "")) label-room)
+                                   suffix)
+                      row (str " " (style/sgr "2" "│")
+                               (if focused? (style/primary content) content)
+                               (apply str (repeat (max 0 (- inner (count content))) " "))
+                               (style/sgr "2" "│"))]
+                  (cond-> []
+                    (and separators? (pos? i) (#{2 4} index))
+                    (conj (str " " (style/sgr "2" "│") (apply str (repeat inner " ")) (style/sgr "2" "│")))
+                    true (conj row))))
+              (range) visible)]
+    (str/join "\n" (concat [(border "╭" "╮")] rows [(border "╰" "╯")]))))
+
+(defn- render-repl-install-screen
+  [state]
+  (let [width (max 12 (:term-width state))
+        height (:term-height state)
+        content-width (- width 4)
+        label (:label (repls/option (:repl-id state)))
+        step (:step state)
+        indent-lines (fn [lines] (str/join "\n" (map #(str "  " %) lines)))
+        footer (fn [text] (str "\n  " (fit-repl-text text content-width) "\n"))]
+    (case step
+      :repl-installing
+      (let [{:keys [frame cancel-action]} (:repl-install state)
+            text (str (nth loading-spinner-frames (mod (or frame 0) (count loading-spinner-frames)))
+                      " " (if cancel-action "Cancelling installation…" (str "Installing " label "…")))]
+        (str "\n" (indent-lines (take (max 1 (- height 4)) (style/helper-lines text content-width)))
+             "\n" (footer "Escape cancels · Ctrl-C exits")))
+      :repl-error
+      (let [lines (mapcat #(style/helper-lines % content-width)
+                          (str/split-lines (installer/clean-diagnostics (:error state))))
+            limit (max 1 (- height 6))
+            lines (if (> (count lines) limit)
+                    (concat [(fit-repl-text "… earlier output omitted …" content-width)]
+                            (take-last (max 0 (dec limit)) lines)) lines)]
+        (str "\n  ! Error\n" (indent-lines lines) "\n"
+             (render-repl-rows [{:label "Return to previous REPL dialects menu"}] 0 width 1 false)
+             (footer "Enter returns · Ctrl-C exits")))
+      :repl-install-menu
+      (let [items (repl-install-items (:repl-id state))
+            selected (:menu-idx state)
+            heading (style/helper-lines (str "! " label " installation not found.") content-width)
+            helper (style/helper-lines (:helper (nth items selected)) content-width)
+            helper (take (max 1 (min 5 (- height 7 (count heading)))) helper)
+            capacity (max 1 (- height 5 (count heading) (count helper)))
+            separators? (>= capacity 7)]
+        (str "\n" (indent-lines heading) "\n"
+             (render-repl-rows items selected width (if separators? (- capacity 2) capacity) separators?)
+             "\n\n" (indent-lines helper)
+             (footer "↑/↓ select · Enter confirms · Esc returns"))))))
+
 (defn render-menu-screen
   "Render one of the top-level menu screens."
   [state]
@@ -1619,20 +1798,20 @@
                                                        (:resource-labels state)))))))
         items (case step
                 :main-menu (main-menu-items)
-                :repl-menu (let [col2-start (->> repls/options 
-                                                 (map #(some-> % :label count)) 
-                                                 (apply max) 
+                :repl-menu (let [col2-start (->> (repls/available-options)
+                                                 (map #(some-> % :label count))
+                                                 (apply max)
                                                  (+ 2))]
                              (mapv #(assoc %
                                            :label
                                            (str (:label %)
-                                                (str/join 
+                                                (str/join
                                                  (repeat (- col2-start
                                                             (or (some-> % :label count)
                                                                 0))
                                                          " "))
                                                 (:description %)))
-                                   repls/options))
+                                   (repls/available-options)))
                 :resources (resource-items state))]
     (str (main-menu-logo-prefix)
          title
@@ -1647,9 +1826,13 @@
                       "Choose a category"))
                 "Select option")
               "\n")
-         (if (= step :resources)
+         (cond
+           (= step :repl-menu)
+           (render-repl-rows (repls/available-options) (:menu-idx state)
+                             (:term-width state) (max 1 (- (:term-height state) 12)) false)
+           (= step :resources)
            (render-resource-list items (:menu-idx state) (:term-width state))
-           (render-list items (:menu-idx state) (:term-width state)))
+           :else (render-list items (:menu-idx state) (:term-width state)))
          (when-let [url (:url (active-resource state))]
            (str "\n  " (style/secondary url)))
          (when-let [error-message (:error state)]
@@ -1674,6 +1857,9 @@
 
     (:post-confetti-blank-screen-pause? state)
     ""
+
+    (#{:repl-install-menu :repl-installing :repl-error} (:step state))
+    (render-repl-install-screen state)
 
     (and (menu-screen? (:step state))
          (not (:success-pause state))
@@ -1892,8 +2078,6 @@
            (help-bar step)
            "\n"))))
 
-                                                                                     
-                                                                                     
 ;; EEEEEEEEEEEEEEEEEEEEEEXXXXXXX       XXXXXXXEEEEEEEEEEEEEEEEEEEEEE       CCCCCCCCCCCCC
 ;; E::::::::::::::::::::EX:::::X       X:::::XE::::::::::::::::::::E    CCC::::::::::::C
 ;; E::::::::::::::::::::EX:::::X       X:::::XE::::::::::::::::::::E  CC:::::::::::::::C
@@ -1910,12 +2094,10 @@
 ;; E::::::::::::::::::::EX:::::X       X:::::XE::::::::::::::::::::E  CC:::::::::::::::C
 ;; E::::::::::::::::::::EX:::::X       X:::::XE::::::::::::::::::::E    CCC::::::::::::C
 ;; EEEEEEEEEEEEEEEEEEEEEEXXXXXXX       XXXXXXXEEEEEEEEEEEEEEEEEEEEEE       CCCCCCCCCCCCC
-                                                                                     
-                                                                                    
-                                                                                     
+
 (defn usage
   []
-  (let [logo+link 
+  (let [logo+link
         (str main-menu-logo
              nav-separator
              "A TUI app for Clojure dialects"
@@ -2002,10 +2184,12 @@
 
 (defn- run-repl!
   ([] (run-repl! :rebel))
-  ([runtime]
+  ([runtime] (run-repl! runtime nil))
+  ([runtime executable]
    (try
-     (let [command ["bb" "-cp" (repl-handoff-classpath) "-m" "repl-handoff.launch"
-                    (name runtime)]]
+     (let [command (cond-> ["bb" "-cp" (repl-handoff-classpath) "-m" "repl-handoff.launch"
+                            (name runtime)]
+                     executable (conj executable))]
        (if (babashka-runtime?)
          (exec-process! command)
          (run-child-process! command)))
@@ -2038,7 +2222,9 @@
                       :alt-screen true})]
     (cond
       (= :repl (:action final-state))
-      (run-repl! (:repl-id final-state))
+      (if-let [executable (:repl-executable final-state)]
+        (run-repl! (:repl-id final-state) executable)
+        (run-repl! (:repl-id final-state)))
 
       (:done? final-state)
       (or (:exit-code final-state) 0)

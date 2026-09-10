@@ -86,6 +86,10 @@
          java.io.File/separator cljs-version
          java.io.File/separator (sha-256 canonical-directory))))
 
+(def native-runtimes
+  {:glojure ["glj"] :gloat ["gloat" "--repl"] :gobb ["gobb"]
+   :hy ["hy"] :janet ["janet"] :joker ["joker"] :phel ["phel"]})
+
 (defn runtime-command
   [runtime working-directory]
   (case runtime
@@ -132,7 +136,8 @@
     :let-go
     ["lg" "-r" let-go-ready-init]
 
-    (throw (ex-info "Unknown spike runtime" {:runtime runtime}))))
+    (or (get native-runtimes runtime)
+        (throw (ex-info "Unknown spike runtime" {:runtime runtime})))))
 
 (defn- await-file!
   [path]
@@ -169,7 +174,6 @@
     (await-file! (str state-path java.io.File/separator "ready"))
     (str (.pid spinner))))
 
-
 (defn- exec-process!
   [environment command]
   (require '[babashka.process])
@@ -177,8 +181,17 @@
          {:extra-env environment}
          command))
 
-(defn launch!
-  [runtime]
+(defn- executable-environment
+  [executable]
+  (if executable
+    (let [current-path (System/getenv "PATH")]
+      {"PATH" (str (.getParent (io/file executable))
+                   (when-not (str/blank? current-path)
+                     (str java.io.File/pathSeparator current-path)))})
+    {}))
+
+(defn- launch-with-spinner!
+  [runtime executable]
   (let [working-directory (.getCanonicalPath (io/file "."))
         label             (or (get runtime-labels runtime)
                               (throw (ex-info "Unknown spike runtime" {:runtime runtime})))
@@ -189,28 +202,38 @@
         state-path        (.getCanonicalPath state-dir)
         logo-character    (logo (System/getProperty "os.name"))
         spinner-pid       (start-spinner! state-path label target-pid logo-character)
-        environment       {"JUS_SPINNER_CONTROL" spinner-control
-                           "JUS_SPINNER_LOGO"    logo-character
-                           "JUS_SPINNER_STATE"   state-path
-                           "JUS_SPINNER_PID"     spinner-pid
-                           "JUS_SPINNER_INIT"    spinner-init
-                           "JUS_REPL_BANNER_LINES"
-                           (str (get runtime-banner-lines runtime 0))
-                           "JUS_REPL_BANNER_OUTPUT"
-                           (name (get runtime-banner-outputs runtime :println))}
+        environment       (merge (executable-environment executable)
+                                 {"JUS_SPINNER_CONTROL" spinner-control
+                                  "JUS_SPINNER_LOGO"    logo-character
+                                  "JUS_SPINNER_STATE"   state-path
+                                  "JUS_SPINNER_PID"     spinner-pid
+                                  "JUS_SPINNER_INIT"    spinner-init
+                                  "JUS_REPL_BANNER_LINES"
+                                  (str (get runtime-banner-lines runtime 0))
+                                  "JUS_REPL_BANNER_OUTPUT"
+                                  (name (get runtime-banner-outputs runtime :println))})
         _                 (when (= :clojurescript runtime)
                             (.mkdirs (io/file (cljs-output-dir working-directory))))
-        command           (runtime-command runtime working-directory)]
+        command           (cond-> (runtime-command runtime working-directory)
+                            executable (assoc 0 executable))]
     (try
       (exec-process! environment command)
       (catch Exception exception
         (stop-spinner! environment)
         (throw exception)))))
 
+(defn launch!
+  ([runtime] (launch! runtime nil))
+  ([runtime executable]
+   (if-let [command (get native-runtimes runtime)]
+     (exec-process! (executable-environment executable)
+                    (cond-> command executable (assoc 0 executable)))
+     (launch-with-spinner! runtime executable))))
+
 (defn -main
-  [& [runtime-name]]
+  [& [runtime-name executable]]
   (when-not runtime-name
     (binding [*out* *err*]
       (println "Usage: bb -cp scripts -m repl-handoff.launch <runtime>"))
     (System/exit 2))
-  (launch! (keyword runtime-name)))
+  (launch! (keyword runtime-name) executable))

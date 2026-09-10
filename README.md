@@ -78,6 +78,35 @@ Early days.
 
 <br>
 
+## Extended REPL dialects
+
+On Linux and macOS, the REPL menu also includes Glojure, Gloat, Gobb, Hy,
+Janet, Joker, and Phel. Jolt, let-go, and these seven dialects can be installed
+from the menu using [in-1](https://in-1.cc/install/). Installation requires
+Bash, Git, curl, and GNU make on `PATH`; the installer obtains the dialect's
+host runtime. Available binaries depend on upstream platform support.
+
+When a dialect is missing, choose Temporary or Persistent. Temporary installs
+use `${TMPDIR:-/tmp}/in-1`; persistent installs use `$HOME/.local`. Jus searches
+`PATH`, then `$HOME/.local/bin`, then the temporary prefix's `bin` directory.
+It uses in-1's current default versions and does not update an existing dialect.
+
+Installation runs with a spinner and opens the REPL automatically on success.
+Escape cancels and returns to the dialect menu; Ctrl-C cancels and exits jus.
+Failures before handoff show diagnostics and a return-to-menu action. Once the
+REPL starts, its own terminal behavior applies. Temporary installations remain
+until temporary storage is cleaned; jus does not remove shared in-1 files or
+edit shell startup files.
+
+The installation menu includes official dialect guides and terminal hyperlinks
+in helper text. `NO_COLOR` or `TERM=dumb` disables helper hyperlink escapes.
+Windows retains its existing six REPL choices; in-1 integration on Windows/WSL
+is deferred.
+
+For deterministic installer/menu terminal checks, run
+`scripts/repl-install-smoke.exp` from the repository root. It uses fake downloads
+and isolated temporary installation directories, without network access.
+
 ## Installation
 
 You can install jus via `in-1` or `bbin`

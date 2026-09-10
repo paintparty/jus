@@ -4,7 +4,8 @@
             [jus.tui.repls :as repls]))
 
 (deftest options-have-the-planned-order-and-default
-  (is (= [:clojure :rebel :babashka :clojurescript :jolt :let-go]
+  (is (= [:clojure :rebel :babashka :clojurescript :jolt :let-go
+          :glojure :gloat :gobb :hy :janet :joker :phel]
          (mapv :id repls/options)))
   (is (= :clojure (:id (first repls/options))))
   (is (= ["clojure"] (:requires (repls/option :clojure))))
@@ -72,3 +73,15 @@
               style/margin-inline-start-str
               "Refer to https://github.com/nooga/let-go#install and try again.")
          (repls/missing-executable-message "lg"))))
+
+(deftest extended-dialects-are-platform-filtered
+  (is (= 13 (count (repls/available-options "Mac OS X")))))
+
+(deftest platform-and-native-command-contracts
+  (is (= 13 (count (repls/available-options "Linux")))))
+
+(deftest windows-keeps-the-original-menu
+  (is (= [:clojure :rebel :babashka :clojurescript :jolt :let-go]
+         (mapv :id (repls/available-options "Windows 11"))))
+  (is (= ["gloat" "--repl"] (repls/command :gloat ".")))
+  (is (= "Python" (:description (repls/option :hy)))))

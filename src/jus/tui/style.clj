@@ -150,3 +150,33 @@
   (if no-color?
     (primary s)
     (charm-style/render (charm-style/style :fg accent-hex :bold true) s)))
+
+(defn hyperlinks-enabled?
+  []
+  (and (nil? (System/getenv "NO_COLOR"))
+       (not= "dumb" (System/getenv "TERM"))))
+
+(defn hyperlink
+  [label url]
+  (if (hyperlinks-enabled?)
+    (str "\033]8;;" url "\033\\" label "\033]8;;\033\\")
+    label))
+
+(defn helper-lines
+  "Wrap helper text by visible width, rendering only Markdown links and code spans."
+  [text width]
+  (let [width (max 1 width)
+        tokens (re-seq #"\[([^\]]+)\]\((https?://[^\s)]+)\)([.,;:!?]?)|([^\s]+)" text)
+        words (mapcat (fn [[_ label url punctuation plain]]
+                        (for [word (clojure.string/split (if label (str label punctuation) plain) #"\s+")
+                              piece (partition-all width (clojure.string/replace word "`" ""))]
+                          {:text (apply str piece) :url url})) tokens)]
+    (:lines
+     (reduce (fn [{:keys [lines column]} {:keys [text url]}]
+               (let [new-line? (> (+ column (if (pos? column) 1 0) (count text)) width)
+                     gap (if (or new-line? (zero? column)) "" " ")
+                     rendered (str gap (if url (hyperlink text url) text))]
+                 {:lines (if new-line? (conj lines rendered)
+                             (update lines (dec (count lines)) str rendered))
+                  :column (+ (if new-line? 0 column) (count gap) (count text))}))
+             {:lines [""] :column 0} words))))

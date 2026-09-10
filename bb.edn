@@ -15,10 +15,12 @@
                                  :task (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "integration")}
             test                {:doc  "Unit + integration tests. Run before merging."
                                  :task (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "all")}
-            test:e2e            {:doc  "Run terminal and REPL handoff tests. Run when changing terminal behavior, REPL handoff, process replacement, or runtime startup. E2e test suite uses real runtimes and PTYs, so it is slower and environment-dependent."
-                                 :task (shell "scripts/repl-handoff-spike.exp")}
+            test:e2e            {:doc  "Run terminal, installer, and REPL handoff tests. Run when changing terminal behavior, installation, REPL handoff, process replacement, or runtime startup. E2e test suite uses real runtimes and PTYs, so it is slower and environment-dependent."
+                                 :task (do (shell "scripts/repl-install-smoke.exp")
+                                           (shell "scripts/repl-handoff-spike.exp"))}
             test:all            {:doc  "Unit + integration tests + e2e tests. Run before release."
                                  :task (do (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "all")
+                                           (shell "scripts/repl-install-smoke.exp")
                                            (shell "scripts/repl-handoff-spike.exp"))}
             install:jus-local   {:doc  "Installs this local checkout under the dev-safe command name `jus-local`. Runs `bbin install . --as jus-local`"
                                  :task (shell "bbin" "install" "." "--as" "jus-local")}
