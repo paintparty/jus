@@ -1710,13 +1710,25 @@
         (if (< width 2) (subs text 0 width) (str (subs text 0 (dec width)) "…")))))
 
 (defn- render-repl-rows
-  [items selected width height separators?]
+  [items selected width height separators? overflow-counts?]
   (let [inner (max 4 (- width 4))
         capacity (max 1 height)
         start (min (max 0 (- (count items) capacity)) (max 0 (- selected (dec capacity))))
         visible (subvec (vec items) start (min (count items) (+ start capacity)))
+        hidden-above start
+        hidden-below (- (count items) start (count visible))
         label-width (apply max 0 (map #(count (:label %)) items))
         border (fn [left right] (str " " (style/sgr "2" (str left (apply str (repeat inner "─")) right))))
+        overflow-row (fn [arrow hidden]
+                       (let [content (str " " arrow " " hidden " more")]
+                         (str " " (style/sgr "2" "│")
+                              (style/secondary content)
+                              (apply str (repeat (max 0 (- inner (count content))) " "))
+                              (style/sgr "2" "│"))))
+        top-overflow (when (and overflow-counts? (pos? hidden-above))
+                       (overflow-row "↑" hidden-above))
+        bottom-overflow (when (and overflow-counts? (pos? hidden-below))
+                          (overflow-row "↓" hidden-below))
         rows (mapcat
               (fn [i {:keys [label desc description url]}]
                 (let [index (+ start i)
@@ -1737,7 +1749,11 @@
                     (conj (str " " (style/sgr "2" "│") (apply str (repeat inner " ")) (style/sgr "2" "│")))
                     true (conj row))))
               (range) visible)]
-    (str/join "\n" (concat [(border "╭" "╮")] rows [(border "╰" "╯")]))))
+    (str/join "\n" (concat [(border "╭" "╮")]
+                           (when top-overflow [top-overflow])
+                           rows
+                           (when bottom-overflow [bottom-overflow])
+                           [(border "╰" "╯")]))))
 
 (defn- render-repl-install-screen
   [state]
@@ -1789,7 +1805,7 @@
              "  ! Error\n"
              (indent-lines lines)
              "\n"
-             (render-repl-rows [{:label "Return to previous REPL dialects menu"}] 0 width 1 false)
+             (render-repl-rows [{:label "Return to previous REPL dialects menu"}] 0 width 1 false false)
              shared-footer
              "\n"))
       :repl-install-menu
@@ -1812,7 +1828,7 @@
              section-gap
              (indent-lines heading)
              "\n"
-             (render-repl-rows items selected width capacity false)
+             (render-repl-rows items selected width capacity false false)
              "\n"
              (helper-slot helper)
              shared-footer
@@ -1867,7 +1883,7 @@
          (cond
            (= step :repl-menu)
            (render-repl-rows (repls/available-options) (:menu-idx state)
-                             (:term-width state) (max 1 (- (:term-height state) 12)) false)
+                             (:term-width state) (max 1 (- (:term-height state) 12)) false true)
            (= step :resources)
            (render-resource-list items (:menu-idx state) (:term-width state))
            :else (render-list items (:menu-idx state) (:term-width state)))

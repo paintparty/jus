@@ -7,6 +7,7 @@
             [jus.tui.animation :as animation]
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
+            [jus.tui.repls :as repls]
             [jus.tui.style :as style]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]])
@@ -549,6 +550,30 @@
     (is (str/includes? rendered "Select REPL type"))
     (is (str/includes? rendered "Clojure                      JVM, default"))
     (is (str/includes? rendered "ClojureScript                JS"))))
+
+(deftest repl-menu-shows-secondary-overflow-counts-around-the-visible-items
+  (with-redefs [repls/available-options (constantly repls/options)]
+    (let [render (fn [selected height]
+                   (core/view
+                    (assoc (core/main-menu-state example-global-config)
+                           :step :repl-menu
+                           :menu-idx selected
+                           :term-height height)))
+          full-screen (render 10 25)
+          bottom-only (render 10 23)
+          both-sides (render 10 21)
+          top-only (render 12 21)]
+      (is (not (str/includes? (core/strip-ansi full-screen) " more")))
+      (is (not (re-find #"↑ \d+ more" (core/strip-ansi bottom-only))))
+      (is (str/includes? bottom-only (style/secondary " ↓ 2 more")))
+      (is (str/includes? both-sides (style/secondary " ↑ 2 more")))
+      (is (str/includes? both-sides (style/secondary " ↓ 2 more")))
+      (is (str/includes? top-only (style/secondary " ↑ 4 more")))
+      (is (not (re-find #"↓ \d+ more" (core/strip-ansi top-only))))
+      (is (< (.indexOf both-sides "↑ 2 more")
+             (.indexOf both-sides "Babashka")))
+      (is (< (.indexOf both-sides "Janet")
+             (.indexOf both-sides "↓ 2 more"))))))
 
 (defn- final-confirmation-state [parent]
   {:step           :path-confirm-final
