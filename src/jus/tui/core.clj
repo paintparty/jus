@@ -1771,12 +1771,12 @@
     (case step
       :repl-installing
       (let [{:keys [frame cancel-action]} (:repl-install state)
-            text (str (nth loading-spinner-frames (mod (or frame 0) (count loading-spinner-frames)))
-                      " " (if cancel-action "Cancelling installation…" (str "Installing " label "…")))]
+            spinner (nth loading-spinner-frames
+                         (mod (or frame 0) (count loading-spinner-frames)))
+            message (if cancel-action "Cancelling installation…" (str "Installing " label "…"))]
         (str header
              section-gap
-             (indent-lines (take (max 1 (- height 7))
-                                 (style/helper-lines text content-width)))
+             "  " spinner (fit-repl-text message (max 1 (- content-width 2)))
              (progress-footer "Escape cancels · Ctrl-C exits")))
       :repl-error
       (let [lines (mapcat #(style/helper-lines % content-width)

@@ -160,3 +160,16 @@
           lines (str/split-lines (installer/clean-diagnostics (core/view state)))]
       (is (every? #(<= (count %) width) lines) (str step " " width))
       (is (<= (count lines) height) (str step " " width "x" height)))))
+
+(deftest installation-spinner-keeps-its-message-column-stable
+  (let [render-frame (fn [frame]
+                       (-> (missing-menu)
+                           (assoc :step :repl-installing
+                                  :term-width 80 :term-height 24
+                                  :repl-install {:frame frame})
+                           core/view
+                           core/strip-ansi))
+        visible-frame (render-frame 0)
+        blank-frame (render-frame 2)]
+    (is (= (.indexOf visible-frame "Installing Glojure…")
+           (.indexOf blank-frame "Installing Glojure…")))))
