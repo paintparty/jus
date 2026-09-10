@@ -1749,36 +1749,71 @@
         label (:label (repls/option (:repl-id state)))
         step (:step state)
         indent-lines (fn [lines] (str/join "\n" (map #(str "  " %) lines)))
-        footer (fn [text] (str "\n  " (fit-repl-text text content-width) "\n"))]
+        header (str (main-menu-logo-prefix)
+                    main-menu-logo-with-nav
+                    (style/italic (-> main-menu-items* :repl :nav-label))
+                    nav-separator
+                    (style/italic label))
+        header (if (<= (count (strip-ansi header)) width)
+                 header
+                 (str "\n" (style/italic
+                            (fit-repl-text (str "  ◒ jus ╱ " label) width))))
+        helper-slot (fn [lines]
+                      (str "  "
+                           (helper-text (str/join "\n  " lines))))
+        shared-footer (let [footer (help-bar step)]
+                        (if (<= (count (strip-ansi (last (str/split-lines footer)))) width)
+                          footer
+                          (str "\n\n  "
+                               (style/secondary
+                                (fit-repl-text "Enter · ↑↓ · Esc · Ctrl-C" content-width)))))
+        section-gap (if (< height 18) "\n" "\n\n\n")
+        progress-footer (fn [text]
+                          (str "\n\n  " (fit-repl-text text content-width) "\n"))]
     (case step
       :repl-installing
       (let [{:keys [frame cancel-action]} (:repl-install state)
             text (str (nth loading-spinner-frames (mod (or frame 0) (count loading-spinner-frames)))
                       " " (if cancel-action "Cancelling installation…" (str "Installing " label "…")))]
-        (str "\n" (indent-lines (take (max 1 (- height 4)) (style/helper-lines text content-width)))
-             "\n" (footer "Escape cancels · Ctrl-C exits")))
+        (str header
+             section-gap
+             (indent-lines (take (max 1 (- height 7))
+                                 (style/helper-lines text content-width)))
+             (progress-footer "Escape cancels · Ctrl-C exits")))
       :repl-error
       (let [lines (mapcat #(style/helper-lines % content-width)
                           (str/split-lines (installer/clean-diagnostics (:error state))))
-            limit (max 1 (- height 6))
+            limit (max 1 (- height 9))
             lines (if (> (count lines) limit)
                     (concat [(fit-repl-text "… earlier output omitted …" content-width)]
                             (take-last (max 0 (dec limit)) lines)) lines)]
-        (str "\n  ! Error\n" (indent-lines lines) "\n"
+        (str header
+             section-gap
+             "  ! Error\n"
+             (indent-lines lines)
+             "\n"
              (render-repl-rows [{:label "Return to previous REPL dialects menu"}] 0 width 1 false)
-             (footer "Enter returns · Ctrl-C exits")))
+             shared-footer
+             "\n"))
       :repl-install-menu
       (let [items (repl-install-items (:repl-id state))
             selected (:menu-idx state)
             heading (style/helper-lines (str "! " label " installation not found.") content-width)
             helper (style/helper-lines (:helper (nth items selected)) content-width)
-            helper (take (max 1 (min 5 (- height 7 (count heading)))) helper)
-            capacity (max 1 (- height 5 (count heading) (count helper)))
-            separators? (>= capacity 7)]
-        (str "\n" (indent-lines heading) "\n"
-             (render-repl-rows items selected width (if separators? (- capacity 2) capacity) separators?)
-             "\n\n" (indent-lines helper)
-             (footer "↑/↓ select · Enter confirms · Esc returns"))))))
+            shell-lines (if (< height 18) 4 6)
+            helper (take (max 1 (min 5 (- height (count heading) shell-lines 3))) helper)
+            box-budget (max 3 (- height (count heading) (count helper) shell-lines))
+            separators? (>= box-budget 9)
+            capacity (max 1 (min 5 (- box-budget 2 (if separators? 2 0))))]
+        (str header
+             section-gap
+             (indent-lines heading)
+             "\n"
+             (render-repl-rows items selected width capacity separators?)
+             "\n"
+             (helper-slot helper)
+             shared-footer
+             "\n")))))
 
 (defn render-menu-screen
   "Render one of the top-level menu screens."

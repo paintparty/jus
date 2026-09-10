@@ -40,6 +40,16 @@
         (is (= 6 (:menu-idx back)))
         (is (nil? command))))))
 
+(deftest installation-menu-uses-the-shared-app-shell
+  (let [screen (core/view (assoc (missing-menu) :term-width 80 :term-height 24))
+        plain (core/strip-ansi screen)]
+    (is (str/includes? plain
+                       (str style/logo
+                            " jus ╱ Launch Interactive REPL ╱ Glojure")))
+    (is (str/includes? screen "\u001b[2mTemporary installation using"))
+    (is (str/includes? plain
+                       "Enter: next,  ↑↓: menus,  Esc: back,  Ctrl-C: quit"))))
+
 (deftest discovered-runtime-launches-the-resolved-path
   (with-redefs [repls/discover (constantly "/some path/bin/glj")]
     (let [[state command] (core/update-fn (selected) (msg/key-press :enter))]
