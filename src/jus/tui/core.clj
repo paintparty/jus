@@ -644,20 +644,19 @@
         args (if (= runtime :gloat) " --repl" "")]
     [{:label (str "Install " label ", Temporary") :mode :temporary
       :desc (str command "--temp " installer " && " installer args)
-      :helper (str "Temporary installation using [in-1](https://in-1.cc). "
-                   "Files remain in temporary storage until cleaned. "
-                   "Requires Bash, Git, curl and GNU make.")}
+      :helper (str "This is a temp install using [in-1](https://in-1.cc), a tool for\n"
+                   "installing things quickly and easily, with no prerequisites.")}
      {:label (str "Install " label ", Persistent") :mode :persistent
       :desc (str command "--local " installer " PREFIX=\"$HOME/.local\" && " installer args)
-      :helper (str "Local installation using [in-1](https://in-1.cc). "
-                   "Installs " label " in `$HOME/.local/bin/" installer "`. "
-                   "Requires Bash, Git, curl and GNU make.")}
+      :helper (str "This is a local install using [in-1](https://in-1.cc), a tool for\n"
+                   "installing things quickly and easily, with no prerequisites.\n"
+                   "It will install " label " in `$HOME/.local/bin/" installer "`")}
      {:label (str "View " label " Install Guide") :url guide
       :desc (str "Official " label " installation info")
-      :helper (str "[" guide "](" guide ")")}
-     {:label "Instant Dialect Commands" :url "https://clojure.cc/try/"
+      :helper guide}
+     {:label "Instant Dialect Commands" :url "https://clojure.cc/try"
       :desc "Learn more at clojure.cc/try"
-      :helper "[https://clojure.cc/try/](https://clojure.cc/try/)"}
+      :helper "https://clojure.cc/try"}
      {:label "Cancel" :desc "Returns to previous REPL dialects menu"
       :helper "Return to the REPL dialects menu."}]))
 

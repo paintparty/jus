@@ -41,14 +41,33 @@
         (is (nil? command))))))
 
 (deftest installation-menu-uses-the-shared-app-shell
-  (let [screen (core/view (assoc (missing-menu) :term-width 80 :term-height 24))
-        plain (core/strip-ansi screen)]
-    (is (str/includes? plain
-                       (str style/logo
-                            " jus ╱ Launch Interactive REPL ╱ Glojure")))
-    (is (str/includes? screen "\u001b[2mTemporary installation using"))
-    (is (str/includes? plain
-                       "Enter: next,  ↑↓: menus,  Esc: back,  Ctrl-C: quit"))))
+  (with-redefs [style/hyperlinks-enabled? (constantly true)]
+    (let [screen (core/view (assoc (missing-menu) :term-width 80 :term-height 24))
+          plain (installer/clean-diagnostics screen)]
+      (is (str/includes? plain
+                         (str style/logo
+                              " jus ╱ Launch Interactive REPL ╱ Glojure")))
+      (is (str/includes? plain
+                         (str "  This is a temp install using in-1, a tool for\n"
+                              "  installing things quickly and easily, with no prerequisites.")))
+      (is (str/includes? screen
+                         "\u001b]8;;https://in-1.cc\u001b\\in-1\u001b]8;;\u001b\\"))
+      (is (str/includes? plain
+                         "Enter: next,  ↑↓: menus,  Esc: back,  Ctrl-C: quit")))))
+
+(deftest installation-helper-copy-is-preserved
+  (let [screen-for (fn [index]
+                     (installer/clean-diagnostics
+                      (core/view (assoc (missing-menu)
+                                        :term-width 80 :term-height 24 :menu-idx index))))]
+    (is (str/includes?
+         (screen-for 1)
+         (str "  This is a local install using in-1, a tool for\n"
+              "  installing things quickly and easily, with no prerequisites.\n"
+              "  It will install Glojure in $HOME/.local/bin/glj")))
+    (is (str/includes? (screen-for 2)
+                       "  https://github.com/glojurelang/glojure#installation"))
+    (is (str/includes? (screen-for 3) "  https://clojure.cc/try"))))
 
 (deftest discovered-runtime-launches-the-resolved-path
   (with-redefs [repls/discover (constantly "/some path/bin/glj")]

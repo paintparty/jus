@@ -26,3 +26,8 @@
 
 (deftest non-windows-uses-the-yin-yang-logo
   (is (= "◒" #_"☯" (logo-for "Linux"))))
+
+(deftest helper-lines-preserve-authored-line-breaks
+  (with-redefs [style/hyperlinks-enabled? (constantly false)]
+    (is (= ["first line" "second line"]
+           (style/helper-lines "first line\nsecond line" 80)))))

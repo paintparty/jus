@@ -163,20 +163,39 @@
     label))
 
 (defn helper-lines
-  "Wrap helper text by visible width, rendering only Markdown links and code spans."
+  "Wrap helper text by visible width, preserving authored lines and rendering links."
   [text width]
   (let [width (max 1 width)
-        tokens (re-seq #"\[([^\]]+)\]\((https?://[^\s)]+)\)([.,;:!?]?)|([^\s]+)" text)
-        words (mapcat (fn [[_ label url punctuation plain]]
-                        (for [word (clojure.string/split (if label (str label punctuation) plain) #"\s+")
-                              piece (partition-all width (clojure.string/replace word "`" ""))]
-                          {:text (apply str piece) :url url})) tokens)]
-    (:lines
-     (reduce (fn [{:keys [lines column]} {:keys [text url]}]
-               (let [new-line? (> (+ column (if (pos? column) 1 0) (count text)) width)
-                     gap (if (or new-line? (zero? column)) "" " ")
-                     rendered (str gap (if url (hyperlink text url) text))]
-                 {:lines (if new-line? (conj lines rendered)
-                             (update lines (dec (count lines)) str rendered))
-                  :column (+ (if new-line? 0 column) (count gap) (count text))}))
-             {:lines [""] :column 0} words))))
+        wrap-line
+        (fn [line]
+          (let [tokens (re-seq #"\[([^\]]+)\]\((https?://[^\s)]+)\)([.,;:!?]?)|([^\s]+)" line)
+                words (mapcat
+                       (fn [[_ label url punctuation plain]]
+                         (let [source (or label plain)
+                               link-url (or url
+                                            (when (and plain
+                                                       (re-matches #"https?://[^\s]+" plain))
+                                              plain))
+                               pieces (vec
+                                       (for [word (str/split source #"\s+")
+                                             piece (partition-all width (str/replace word "`" ""))]
+                                         (apply str piece)))]
+                           (map-indexed
+                            (fn [index piece]
+                              {:text piece
+                               :url link-url
+                               :suffix (if (= index (dec (count pieces))) punctuation "")})
+                            pieces))) tokens)]
+            (:lines
+             (reduce (fn [{:keys [lines column]} {:keys [text url suffix]}]
+                       (let [visible-text (str text suffix)
+                             new-line? (> (+ column (if (pos? column) 1 0)
+                                             (count visible-text)) width)
+                             gap (if (or new-line? (zero? column)) "" " ")
+                             rendered (str gap (if url (hyperlink text url) text) suffix)]
+                         {:lines (if new-line? (conj lines rendered)
+                                     (update lines (dec (count lines)) str rendered))
+                          :column (+ (if new-line? 0 column)
+                                     (count gap) (count visible-text))}))
+                     {:lines [""] :column 0} words))))]
+    (vec (mapcat wrap-line (str/split (str text) #"\n" -1)))))
