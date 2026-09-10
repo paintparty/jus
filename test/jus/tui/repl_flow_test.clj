@@ -172,4 +172,7 @@
         visible-frame (render-frame 0)
         blank-frame (render-frame 2)]
     (is (= (.indexOf visible-frame "Installing Glojure…")
-           (.indexOf blank-frame "Installing Glojure…")))))
+           (.indexOf blank-frame "Installing Glojure…")))
+    (is (str/includes? visible-frame
+                       "Enter: next,  ↑↓: menus,  Esc: back,  Ctrl-C: quit"))
+    (is (not (str/includes? visible-frame "Escape cancels · Ctrl-C exits")))))

@@ -1765,9 +1765,7 @@
                           (str "\n\n  "
                                (style/secondary
                                 (fit-repl-text "Enter · ↑↓ · Esc · Ctrl-C" content-width)))))
-        section-gap (if (< height 18) "\n" "\n\n\n")
-        progress-footer (fn [text]
-                          (str "\n\n  " (fit-repl-text text content-width) "\n"))]
+        section-gap (if (< height 18) "\n" "\n\n\n")]
     (case step
       :repl-installing
       (let [{:keys [frame cancel-action]} (:repl-install state)
@@ -1777,7 +1775,8 @@
         (str header
              section-gap
              "  " spinner (fit-repl-text message (max 1 (- content-width 2)))
-             (progress-footer "Escape cancels · Ctrl-C exits")))
+             shared-footer
+             "\n"))
       :repl-error
       (let [lines (mapcat #(style/helper-lines % content-width)
                           (str/split-lines (installer/clean-diagnostics (:error state))))
