@@ -643,20 +643,19 @@
         command (str "source <(curl -fsSL https://in-1.cc) ")
         args (if (= runtime :gloat) " --repl" "")]
     [{:label (str "Install " label ", Temporary") :mode :temporary
-      :desc (str command "--temp " installer " && " installer args)
+      :desc "Installs via in-1 for current session"
+      :command (str command "--temp " installer " && " installer args)
       :helper (str "This is a temp install using [in-1](https://in-1.cc), a tool for\n"
                    "installing things quickly and easily, with no prerequisites.")}
      {:label (str "Install " label ", Persistent") :mode :persistent
-      :desc (str command "--local " installer " PREFIX=\"$HOME/.local\" && " installer args)
+      :desc "Installs via in-1"
+      :command (str command "--local " installer " PREFIX=\"$HOME/.local\" && " installer args)
       :helper (str "This is a local install using [in-1](https://in-1.cc), a tool for\n"
                    "installing things quickly and easily, with no prerequisites.\n"
                    "It will install " label " in `$HOME/.local/bin/" installer "`")}
      {:label (str "View " label " Install Guide") :url guide
       :desc (str "Official " label " installation info")
       :helper guide}
-     {:label "Instant Dialect Commands" :url "https://clojure.cc/try"
-      :desc "Learn more at clojure.cc/try"
-      :helper "https://clojure.cc/try"}
      {:label "Cancel" :desc "Returns to previous REPL dialects menu"
       :helper "Return to the REPL dialects menu."}]))
 
@@ -1797,18 +1796,24 @@
       :repl-install-menu
       (let [items (repl-install-items (:repl-id state))
             selected (:menu-idx state)
+            selected-item (nth items selected)
             heading (style/helper-lines (str "! " label " installation not found.") content-width)
-            helper (style/helper-lines (:helper (nth items selected)) content-width)
+            explanation (style/helper-lines (:helper selected-item) content-width)
+            helper (if-let [command (:command selected-item)]
+                     (concat ["This will run:"]
+                             (style/helper-lines command content-width)
+                             [""]
+                             explanation)
+                     explanation)
             shell-lines (if (< height 18) 4 6)
-            helper (take (max 1 (min 5 (- height (count heading) shell-lines 3))) helper)
+            helper (take (max 1 (min 8 (- height (count heading) shell-lines 3))) helper)
             box-budget (max 3 (- height (count heading) (count helper) shell-lines))
-            separators? (>= box-budget 9)
-            capacity (max 1 (min 5 (- box-budget 2 (if separators? 2 0))))]
+            capacity (max 1 (min 4 (- box-budget 2)))]
         (str header
              section-gap
              (indent-lines heading)
              "\n"
-             (render-repl-rows items selected width capacity separators?)
+             (render-repl-rows items selected width capacity false)
              "\n"
              (helper-slot helper)
              shared-footer

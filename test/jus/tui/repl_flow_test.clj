@@ -35,7 +35,7 @@
     (is (= :repl-install-menu (:step state)))
     (is (= :glojure (:repl-id state)))
     (doseq [message [(msg/key-press :escape) (msg/key-press :enter)]]
-      (let [[back command] (core/update-fn (assoc state :menu-idx 4) message)]
+      (let [[back command] (core/update-fn (assoc state :menu-idx 3) message)]
         (is (= :repl-menu (:step back)))
         (is (= 6 (:menu-idx back)))
         (is (nil? command))))))
@@ -48,8 +48,16 @@
                          (str style/logo
                               " jus ╱ Launch Interactive REPL ╱ Glojure")))
       (is (str/includes? plain
-                         (str "  This is a temp install using in-1, a tool for\n"
+                         (str "  This will run:\n"
+                              "  source <(curl -fsSL https://in-1.cc) --temp glj && glj\n"
+                              "  \n"
+                              "  This is a temp install using in-1, a tool for\n"
                               "  installing things quickly and easily, with no prerequisites.")))
+      (is (str/includes? plain
+                         "Install Glojure, Temporary   Installs via in-1 for current session"))
+      (is (str/includes? plain
+                         "Install Glojure, Persistent  Installs via in-1"))
+      (is (not (str/includes? plain "Instant Dialect Commands")))
       (is (str/includes? screen
                          "\u001b]8;;https://in-1.cc\u001b\\in-1\u001b]8;;\u001b\\"))
       (is (str/includes? plain
@@ -62,12 +70,15 @@
                                         :term-width 80 :term-height 24 :menu-idx index))))]
     (is (str/includes?
          (screen-for 1)
-         (str "  This is a local install using in-1, a tool for\n"
+         (str "  This will run:\n"
+              "  source <(curl -fsSL https://in-1.cc) --local glj PREFIX=\"$HOME/.local\" &&\n"
+              "  glj\n"
+              "  \n"
+              "  This is a local install using in-1, a tool for\n"
               "  installing things quickly and easily, with no prerequisites.\n"
               "  It will install Glojure in $HOME/.local/bin/glj")))
     (is (str/includes? (screen-for 2)
-                       "  https://github.com/glojurelang/glojure#installation"))
-    (is (str/includes? (screen-for 3) "  https://clojure.cc/try"))))
+                       "  https://github.com/glojurelang/glojure#installation"))))
 
 (deftest discovered-runtime-launches-the-resolved-path
   (with-redefs [repls/discover (constantly "/some path/bin/glj")]
@@ -122,7 +133,7 @@
 
 (deftest rendering-stays-within-the-viewport
   (with-redefs [style/hyperlinks-enabled? (constantly true)]
-    (doseq [width [32 80 120] height [16 24] index (range 5)]
+    (doseq [width [32 80 120] height [16 24] index (range 4)]
       (let [state (assoc (missing-menu) :term-width width :term-height height :menu-idx index)
             screen (core/view state)
             plain (installer/clean-diagnostics screen)]
