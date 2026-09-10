@@ -311,6 +311,29 @@
     (is (= :description (:step selected)))
     (is (= "Jane Developer" (:developer (core/collect-results selected))))))
 
+(deftest wizard-list-menus-follow-focus-within-short-terminals
+  (let [height 16
+        license-screen (core/view
+                        (assoc (core/project-wizard-state example-global-config)
+                               :step :license
+                               :license-idx 5
+                               :term-height height))
+        parent-dirs (mapv #(str "/tmp/parent-" %) (range 12))
+        parent-screen (core/view
+                       (assoc (core/project-wizard-state
+                               (config/project-config {:parent-dirs parent-dirs}))
+                              :step :parent-dir-select
+                              :parent-dirs-idx 8
+                              :term-height height))]
+    (doseq [screen [license-screen parent-screen]]
+      (is (<= (count (str/split-lines (core/strip-ansi screen))) height)))
+    (is (str/includes? license-screen (style/secondary " ↑ 2 more")))
+    (is (str/includes? license-screen (style/secondary " ↓ 1 more")))
+    (is (str/includes? (core/strip-ansi license-screen) "> BSD-2-Clause"))
+    (is (str/includes? parent-screen (style/secondary " ↑ 7 more")))
+    (is (str/includes? parent-screen (style/secondary " ↓ 3 more")))
+    (is (str/includes? (core/strip-ansi parent-screen) "> /tmp/parent-8/"))))
+
 (deftest main-menu-routes-to-project-repl-and-resource-actions
   (with-redefs [core/dev-success-sequence? false
                 core/dev-opening-sequence? false]
@@ -427,6 +450,42 @@
     (is (str/includes? rendered "Explore Clojure variants and dialects"))
     (is (not (str/includes? rendered "https://clojure.org/")))))
 
+(deftest community-resources-follow-focus-within-short-terminal-menus
+  (let [height 16
+        state (assoc (core/main-menu-state example-global-config)
+                     :step :resources
+                     :menu-idx 5
+                     :resource-stack [data/community-resources]
+                     :resource-labels []
+                     :resource-menu-labels []
+                     :term-height height)
+        rendered (core/view state)
+        plain (core/strip-ansi rendered)]
+    (is (<= (count (str/split-lines plain)) height))
+    (is (str/includes? plain "> Development"))
+    (is (str/includes? rendered (style/secondary " ↑ 2 more")))
+    (is (str/includes? rendered (style/secondary " ↓ 7 more")))))
+
+(deftest community-resource-menu-reserves-space-for-the-selected-url
+  (let [height 16
+        items (mapv (fn [index]
+                      {:label (str "Resource " index)
+                       :desc "Description"
+                       :url (str "https://example.test/" index)})
+                    (range 13))
+        state (assoc (core/main-menu-state example-global-config)
+                     :step :resources
+                     :menu-idx 5
+                     :resource-stack [items]
+                     :resource-labels []
+                     :resource-menu-labels []
+                     :term-height height)
+        rendered (core/view state)]
+    (is (<= (count (str/split-lines (core/strip-ansi rendered))) height))
+    (is (str/includes? rendered (style/secondary " ↑ 3 more")))
+    (is (str/includes? rendered (style/secondary " ↓ 7 more")))
+    (is (str/includes? rendered "https://example.test/5"))))
+
 (deftest community-resource-selection-persists-when-leaving-nested-menus
   (let [links       [{:label "Nested link" :url "https://example.test"}]
         child-items [{:label "First child" :entries links}
@@ -495,7 +554,8 @@
                              [{:label "A resource"
                                :desc "A description that is too long for this narrow menu"}]
                              0
-                             50)))))))))
+                             50
+                             1)))))))))
 
 (deftest new-project-opens-the-project-wizard-and-returns-to-main-menu
   (with-redefs [core/dev-success-sequence? false
@@ -880,6 +940,29 @@
     (is (= :project-path (:step back)))
     (is (zero? (:nav-idx back)))
     (is (str/includes? project-path-rendered "> Browse file tree..."))))
+
+(deftest location-browser-follows-focus-within-short-terminal-menus
+  (let [height 16
+        items (mapv (fn [index]
+                      {:label (str "dir-" index "/")
+                       :type :dir
+                       :path (str "/tmp/projects/dir-" index)})
+                    (range 24))
+        state {:step :path-confirm
+               :path-mode "browse"
+               :nav-path "/tmp/projects"
+               :nav-idx 10
+               :nav-items items
+               :project-name (text-input/text-input :value "my-lib")
+               :max-step-idx 9
+               :term-width 80
+               :term-height height}
+        rendered (core/view state)
+        plain (core/strip-ansi rendered)]
+    (is (<= (count (str/split-lines plain)) height))
+    (is (str/includes? plain "> dir-9/"))
+    (is (str/includes? rendered (style/secondary " ↑ 8 more")))
+    (is (str/includes? rendered (style/secondary " ↓ 14 more")))))
 
 (deftest configured-home-relative-parent-dirs-resolve-before-confirmation
   (let [configured-parent "~/hooli/projects"

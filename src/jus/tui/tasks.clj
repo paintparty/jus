@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [charm.message :as msg]
             [charm.program :as program]
+            [jus.tui.menu :as menu]
             [rewrite-clj.zip :as z]))
 
 (defn- malformed!
@@ -119,19 +120,13 @@
 
 (defn- scroll-for-selection
   [state]
-  (let [selected (:selected-idx state)
-        visible  (visible-task-count state)
-        maximum  (max 0 (- (count (:tasks state)) visible))]
-    (cond
-      (< selected (:scroll-offset state)) selected
-      (>= selected (+ (:scroll-offset state) visible))
-      (inc (- selected visible))
-      :else (:scroll-offset state))))
+  (:start (menu/visible-window (:tasks state)
+                               (:selected-idx state)
+                               (visible-task-count state))))
 
 (defn- normalize-scroll
   [state]
-  (let [maximum (max 0 (- (count (:tasks state)) (visible-task-count state)))]
-    (update state :scroll-offset #(clamp (or % 0) 0 maximum))))
+  (assoc state :scroll-offset (scroll-for-selection state)))
 
 (defn- move-selection
   [state delta]
@@ -195,9 +190,14 @@
                               (seq doc-lines))
                        (next doc-lines)
                        doc-lines)]
-    (let [lines (concat [name-line]
-                        (map #(str (apply str (repeat (count prefix) " ")) %) remaining)
-                        (map #(str indent %) rest-docs))]
+    (let [lines (vec (concat [name-line]
+                             (map #(str (apply str (repeat (count prefix) " ")) %) remaining)
+                             (map #(str indent %) rest-docs)))
+          lines (if (> (count lines) 2)
+                  (let [line (second lines)
+                        end  (max 0 (dec (min width (count line))))]
+                    [(first lines) (str (subs line 0 end) "…")])
+                  lines)]
       (cond
         (= :secondary reveal-style) (map secondary lines)
         selected? (map primary lines)
@@ -224,12 +224,13 @@
           (when show-hint? (secondary bb-task-cta-hint)))]))
 
 (defn- picker-view
-  [{:keys [tasks selected-idx scroll-offset animation-phase animation-index]
+  [{:keys [tasks selected-idx animation-phase animation-index]
     :as state}]
   (let [width             (picker-width state)
         animation-phase   (or animation-phase :done)
-        visible           (visible-task-count state)
-        end               (min (count tasks) (+ scroll-offset visible))
+        item-capacity     (visible-task-count state)
+        window            (menu/visible-window tasks selected-idx item-capacity)
+        scroll-offset     (:start window)
         name-width        (task-name-width tasks width)
         show-description? (and (> (or (:term-height state) 24) 12)
                                (> width 16))
@@ -237,33 +238,31 @@
         reveal-count      (if (= :cta animation-phase)
                             0
                             (min (count tasks) (inc (or animation-index -1))))
-        shown-end          (if animated?
-                             (min end (+ scroll-offset reveal-count))
-                             end)
-        shown             (subvec (vec tasks) scroll-offset shown-end)
-        task-blocks       (mapv (fn [index task]
-                                  (render-task task
-                                               (= index selected-idx)
-                                               width
-                                               name-width
-                                               show-description?
-                                               (when (and (= :task-secondary animation-phase)
-                                                          (= index animation-index))
-                                                 :secondary)))
-                                (range scroll-offset end)
-                                shown)
-        rows              (mapcat identity (interpose (gap-lines) task-blocks))
-        up-more?          (pos? scroll-offset)
-        down-more?        (and (not animated?) (< end (count tasks)))]
+        rows              (:lines
+                           (menu/render-window
+                            tasks selected-idx item-capacity (+ 2 (* 2 item-capacity))
+                            (fn [index task]
+                              (when (or (not animated?) (< index reveal-count))
+                                (concat
+                                 (when (> index scroll-offset) (gap-lines))
+                                 (render-task task
+                                              (= index selected-idx)
+                                              width
+                                              name-width
+                                              show-description?
+                                              (when (and (= :task-secondary animation-phase)
+                                                         (= index animation-index))
+                                                :secondary)))))
+                            (fn [arrow hidden]
+                              (when (or (= arrow "↑") (not animated?))
+                                (secondary (str " " arrow " " hidden " more"))))))]
     (str/join "\n"
               (concat (cta-lines width (if (= :cta animation-phase)
                                          animation-index
                                          (count bb-task-cta))
                                  (:arrow-hint-dismissed? state))
-                      (when (seq task-blocks) (gap-lines))
-                      (when up-more? (split-line "  up more" width))
-                      rows
-                      (when down-more? (split-line "  down more" width))))))
+                      (when (seq rows) (gap-lines))
+                      rows))))
 
 (defn- tasks-animation-tick-cmd
   [frame-rate]

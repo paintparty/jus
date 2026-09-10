@@ -9,6 +9,7 @@
             [jus.tui.config :as config]
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
+            [jus.tui.menu :as menu]
             [jus.tui.repls :as repls]
             [jus.tui.repl-installer :as installer]
             [jus.tui.style :as style :refer [error-prefix]]
@@ -56,11 +57,6 @@
   "Controls the progress indicator for normal wizard steps.
    :bar uses the full-width progress bar; :stars uses a compact 12-star line."
   :bar)
-
-(def max-browse-rows
-  "Max number of directory rows shown in the bottom section
-   of the browse-mode location picker before scrolling kicks in."
-  10)
 
 (def default-licenses
   ["EPL-2.0"
@@ -1207,23 +1203,9 @@
 
           :path-confirm
       ;; Selection model: idx 0 = top section (confirm), idx 1..n = nav items.
-      ;; :browse-offset scrolls the visible window of nav items.
           (let [items   (or (:nav-items state) [])
                 sel-idx (:nav-idx state)
-                offset  (or (:browse-offset state) 0)
-                max-idx (count items)
-            ;; Adjust offset so that bottom-section selected item stays visible.
-                adjust-offset
-                (fn [new-sel]
-                  (cond
-              ;; Top section selected. Leave window where it was.
-                    (zero? new-sel) offset
-                    :else
-                    (let [item-i (dec new-sel)]
-                      (cond
-                        (< item-i offset)                       item-i
-                        (>= item-i (+ offset max-browse-rows))  (- item-i (dec max-browse-rows))
-                        :else                                    offset))))]
+                max-idx (count items)]
             (cond
               (msg/key-match? msg "enter")
               (if (zero? sel-idx)
@@ -1237,21 +1219,18 @@
                             :nav-path      new-path
                             :nav-items     (build-browse-items new-path)
                             :nav-idx       (initial-browse-idx new-path)
-                            :browse-offset 0
                             :error         nil) nil]
                     [state nil])))
 
               (msg/key-match? msg :up)
               (let [new-sel (max 0 (dec sel-idx))]
                 [(assoc state
-                        :nav-idx       new-sel
-                        :browse-offset (adjust-offset new-sel)) nil])
+                        :nav-idx new-sel) nil])
 
               (msg/key-match? msg :down)
               (let [new-sel (min max-idx (inc sel-idx))]
                 [(assoc state
-                        :nav-idx       new-sel
-                        :browse-offset (adjust-offset new-sel)) nil])
+                        :nav-idx new-sel) nil])
 
               :else [state nil]))
 
@@ -1437,10 +1416,25 @@
     :else         (str x)
     :else         (str x)))
 
+(defn- render-menu-overflow-row
+  [inner-w arrow hidden]
+  (let [content (str " " arrow " " hidden " more")]
+    (str " " (style/sgr "2" "│")
+         (style/secondary content)
+         (apply str (repeat (max 0 (- inner-w (count content))) " "))
+         (style/sgr "2" "│"))))
+
+(defn- menu-row-capacity
+  ([state] (menu-row-capacity state 0))
+  ([state additional-reserved-lines]
+   (max 1 (- (or (:term-height state) 24)
+             12
+             additional-reserved-lines))))
+
 (defn render-list
   "Navigable bordered list; selected item uses primary emphasis.
    Items may be strings/keywords or maps with :label and optional :type."
-  [items selected-idx term-width]
+  [items selected-idx term-width capacity]
   (let [inner-w   (- term-width 4)
         h-bar     (apply str (repeat (max 0 inner-w) "─"))
         top       (str " " (style/secondary (str "╭" h-bar "╮")))
@@ -1463,65 +1457,61 @@
                                preview)
                           label))
                       (item-label x)))
-        rows      (map-indexed
-                   (fn [i item]
-                     (let [selected? (= i selected-idx)
-                           confirm?  (and (map? item) (= :confirm (:type item)))
-                           prefix    (if selected? " > " "   ")
-                           text      (str prefix (item-text item))
-                           pad       (apply str (repeat (max 0 (- inner-w (count text))) " "))
-                           style-fn  (cond selected? style/primary
-                                           confirm?   identity
-                                           :else      identity)]
-                       (str " "
-                            (style/secondary "│")
-                            (style-fn text)
-                            pad
-                            (style/secondary "│"))))
-                   items)]
+        rows      (:lines
+                   (menu/render-window
+                    items selected-idx capacity (+ capacity 2)
+                    (fn [index item]
+                      (let [selected? (= index selected-idx)
+                            confirm?  (and (map? item) (= :confirm (:type item)))
+                            prefix    (if selected? " > " "   ")
+                            text      (str prefix (item-text item))
+                            pad       (apply str (repeat (max 0 (- inner-w (count text))) " "))
+                            style-fn  (cond selected? style/primary
+                                            confirm?   identity
+                                            :else      identity)]
+                        (str " "
+                             (style/secondary "│")
+                             (style-fn text)
+                             pad
+                             (style/secondary "│"))))
+                    (partial render-menu-overflow-row inner-w)))]
     (str/join "\n" (concat [top] rows [bot]))))
 
 (defn render-resource-list
   "Render resource labels and descriptions in two columns, without URLs."
-  [items selected-idx term-width]
+  [items selected-idx term-width capacity]
   (let [inner-w  (- term-width 4)
         label-w  (apply max 0 (map #(count (:label %)) items))
         h-bar    (apply str (repeat (max 0 inner-w) "─"))
         top      (str " " (style/secondary (str "╭" h-bar "╮")))
         bot      (str " " (style/secondary (str "╰" h-bar "╯")))
-        rows     (map-indexed
-                  (fn [index {:keys [label desc url]}]
-                    (let [selected? (= index selected-idx)
-                          prefix    (if selected? " > " "   ")
-                          suffix    (if (and selected? url)
-                                      open-in-browser-suffix
-                                      "")
-                          desc-w    (max 0
-                                         (- inner-w (count prefix) label-w menu-column-gap
-                                            (if url 3 0)))
-                          desc      (let [description (str (or desc ""))]
-                                      (cond
-                                        (<= (count description) desc-w)
-                                        description
-
-                                        (<= desc-w 3)
-                                        (subs description 0 desc-w)
-
-                                        :else
-                                        (str (subs description
-                                                   0
-                                                   (- desc-w 3))
-                                             "...")))
-                          content   (str prefix
-                                         (format (str "%-" label-w "s") label)
-                                         (apply str (repeat menu-column-gap " "))
-                                         desc
-                                         suffix)
-                          pad       (apply str (repeat (max 0 (- inner-w (count content))) " "))]
-                      (str " " (style/secondary "│")
-                           (if selected? (style/primary content) content)
-                           pad (style/secondary "│"))))
-                  items)]
+        rows     (:lines
+                  (menu/render-window
+                   items selected-idx capacity (+ capacity 2)
+                   (fn [index {:keys [label desc url]}]
+                     (let [selected? (= index selected-idx)
+                           prefix    (if selected? " > " "   ")
+                           suffix    (if (and selected? url)
+                                       open-in-browser-suffix
+                                       "")
+                           desc-w    (max 0
+                                          (- inner-w (count prefix) label-w menu-column-gap
+                                             (if url 3 0)))
+                           desc      (let [description (str (or desc ""))]
+                                       (cond
+                                         (<= (count description) desc-w) description
+                                         (<= desc-w 3) (subs description 0 desc-w)
+                                         :else (str (subs description 0 (- desc-w 3)) "...")))
+                           content   (str prefix
+                                          (format (str "%-" label-w "s") label)
+                                          (apply str (repeat menu-column-gap " "))
+                                          desc
+                                          suffix)
+                           pad       (apply str (repeat (max 0 (- inner-w (count content))) " "))]
+                       (str " " (style/secondary "│")
+                            (if selected? (style/primary content) content)
+                            pad (style/secondary "│"))))
+                   (partial render-menu-overflow-row inner-w)))]
     (str/join "\n" (concat [top] rows [bot]))))
 
 (def focused-item-arrow
@@ -1551,9 +1541,8 @@
   "Two-section bordered box for the browse-mode location picker.
    Top section shows the projected output path and IS the confirm row
    (selected when nav-idx = 0). Bottom section is the navigable directory
-   list (../ + subdirs); selecting an entry navigates. When the list has
-   more than max-browse-rows entries it becomes scrollable, with a
-   '+N more' status line in the box."
+   list (../ + subdirs); selecting an entry navigates. The directory rows
+   follow the focused item within the available terminal height."
   [state]
   (let [tw           (:term-width state)
         inner-w      (- tw 4)
@@ -1566,13 +1555,8 @@
         pn           (text-input/value (:project-name state))
         items        (or (:nav-items state) [])
         sel-idx      (:nav-idx state)
-        offset       (or (:browse-offset state) 0)
         top-sel?     (zero? sel-idx)
-        scroll?      (> (count items) max-browse-rows)
-        win-end      (if scroll? (+ offset max-browse-rows) (count items))
-        visible      (subvec items offset (min win-end (count items)))
-        hidden-below (max 0 (- (count items) win-end))
-        hidden-above offset
+        capacity     (max 1 (- (or (:term-height state) 24) 14))
         ;; Top row: " > <nav-path>/<project>"  (or "   …" when not selected)
         out-path     (str nav-path "/" pn)
         prefix       (if top-sel? " > " "   ")
@@ -1588,69 +1572,52 @@
                             out-path)
                           top-pad
                           side)
-        ;; Bottom rows: visible nav items, original index = offset + i
-        item-rows
-        (map-indexed
-         (fn [i item]
-           (let [orig-i    (+ offset i)
-                 selected? (= (inc orig-i) sel-idx)
-                 label     (:label item)
-                 plain-row (str (if selected? " > " "   ") label)
-                 pad       (apply str (repeat (max 0 (- inner-w (count plain-row))) " "))
-                 row-text  (if selected?
-                             (str " " (style/primary (str "> " label)))
-                             (str "   " label))]
-             (str " " side row-text pad side)))
-         visible)
-        blank-row    (str " " side
-                          (apply str (repeat inner-w " "))
-                          side)
-        top-status-row (when (and scroll? (> hidden-above 0))
-                         (let [s   (str " ↑ " hidden-above " more")
-                               pad (apply str (repeat (max 0 (- inner-w (count s))) " "))]
-                           (str " " side (style/secondary s) pad side)))
-        status-row   (when (and scroll? (> hidden-below 0))
-                       (let [s   (str " ↓ "
-                                      hidden-below
-                                      " more"
-                                      #_" (Use the ↑↓ arrows to scroll)")
-                             pad (apply str (repeat (max 0 (- inner-w (count s))) " "))]
-                         (str " " side (style/secondary s) pad side)))
-        top-list-row    (or top-status-row blank-row)
-        bottom-list-row (or status-row blank-row)]
+        item-rows (:lines
+                   (menu/render-window
+                    items (max 0 (dec sel-idx)) capacity (+ capacity 2)
+                    (fn [orig-i item]
+                      (let [selected? (= (inc orig-i) sel-idx)
+                            label     (:label item)
+                            plain-row (str (if selected? " > " "   ") label)
+                            pad       (apply str (repeat (max 0 (- inner-w (count plain-row))) " "))
+                            row-text  (if selected?
+                                        (str " " (style/primary (str "> " label)))
+                                        (str "   " label))]
+                        (str " " side row-text pad side)))
+                    (partial render-menu-overflow-row inner-w)))]
     (str/join "\n" (concat [top-bar top-row mid-bar]
-                           [top-list-row]
                            item-rows
-                           [bottom-list-row]
                            [bot-bar]))))
 
 (defn render-parent-dirs
   "Bordered list of parent dirs; the selected row appends
     the project name with primary emphasis to preview the final path."
-  [items selected-idx project-name term-width]
+  [items selected-idx project-name term-width capacity]
   (let [inner-w (- term-width 4)
         h-bar   (apply str (repeat (max 0 inner-w) "─"))
         top     (str " " (style/secondary (str "╭" h-bar "╮")))
         bot     (str " " (style/secondary (str "╰" h-bar "╯")))
         rows
-        (map-indexed
-         (fn [i item]
-           (let [selected? (= i selected-idx)
-                 path      (str item)
-                 suffix    (when selected? project-name)
-                 slash     (when-not (str/ends-with? path "/") "/")
-                 path+     (str path slash)
-                 plain     (str (if selected? " > " "   ") (if selected? path+ path) (or suffix ""))
-                 pad       (apply str (repeat (max 0 (- inner-w (count plain))) " "))
-                 content   (str (if selected? (str " " focused-item-arrow " ") "   ")
-                                (if selected? path+ path)
-                                (when suffix (style/primary suffix)))]
-             (str " "
-                  (style/secondary "│")
-                  content
-                  pad
-                  (style/secondary "│"))))
-         items)]
+        (:lines
+         (menu/render-window
+          items selected-idx capacity (+ capacity 2)
+          (fn [index item]
+            (let [selected? (= index selected-idx)
+                  path      (str item)
+                  suffix    (when selected? project-name)
+                  slash     (when-not (str/ends-with? path "/") "/")
+                  path+     (str path slash)
+                  plain     (str (if selected? " > " "   ") (if selected? path+ path) (or suffix ""))
+                  pad       (apply str (repeat (max 0 (- inner-w (count plain))) " "))
+                  content   (str (if selected? (str " " focused-item-arrow " ") "   ")
+                                 (if selected? path+ path)
+                                 (when suffix (style/primary suffix)))]
+              (str " "
+                   (style/secondary "│")
+                   content
+                   pad
+                   (style/secondary "│"))))
+          (partial render-menu-overflow-row inner-w)))]
     (str/join "\n" (concat [top] rows [bot]))))
 
 (defn render-summary
@@ -1710,50 +1677,33 @@
         (if (< width 2) (subs text 0 width) (str (subs text 0 (dec width)) "…")))))
 
 (defn- render-repl-rows
-  [items selected width height separators? overflow-counts?]
+  [items selected width height separators?]
   (let [inner (max 4 (- width 4))
         capacity (max 1 height)
-        start (min (max 0 (- (count items) capacity)) (max 0 (- selected (dec capacity))))
-        visible (subvec (vec items) start (min (count items) (+ start capacity)))
-        hidden-above start
-        hidden-below (- (count items) start (count visible))
         label-width (apply max 0 (map #(count (:label %)) items))
         border (fn [left right] (str " " (style/sgr "2" (str left (apply str (repeat inner "─")) right))))
-        overflow-row (fn [arrow hidden]
-                       (let [content (str " " arrow " " hidden " more")]
-                         (str " " (style/sgr "2" "│")
-                              (style/secondary content)
-                              (apply str (repeat (max 0 (- inner (count content))) " "))
-                              (style/sgr "2" "│"))))
-        top-overflow (when (and overflow-counts? (pos? hidden-above))
-                       (overflow-row "↑" hidden-above))
-        bottom-overflow (when (and overflow-counts? (pos? hidden-below))
-                          (overflow-row "↓" hidden-below))
-        rows (mapcat
-              (fn [i {:keys [label desc description url]}]
-                (let [index (+ start i)
-                      focused? (= index selected)
-                      suffix (if (and focused? url) open-in-browser-suffix "")
-                      label-room (max 1 (- inner 3 (count suffix)))
-                      content (str (if focused? " > " "   ")
-                                   (fit-repl-text
-                                    (str (format (str "%-" (max 1 label-width) "s") label)
-                                         "  " (or desc description "")) label-room)
-                                   suffix)
-                      row (str " " (style/sgr "2" "│")
-                               (if focused? (style/primary content) content)
-                               (apply str (repeat (max 0 (- inner (count content))) " "))
-                               (style/sgr "2" "│"))]
-                  (cond-> []
-                    (and separators? (pos? i) (#{2 4} index))
-                    (conj (str " " (style/sgr "2" "│") (apply str (repeat inner " ")) (style/sgr "2" "│")))
-                    true (conj row))))
-              (range) visible)]
-    (str/join "\n" (concat [(border "╭" "╮")]
-                           (when top-overflow [top-overflow])
-                           rows
-                           (when bottom-overflow [bottom-overflow])
-                           [(border "╰" "╯")]))))
+        rows (:lines
+              (menu/render-window
+               items selected capacity (+ capacity 2)
+               (fn [index {:keys [label desc description url]}]
+                 (let [focused? (= index selected)
+                       suffix (if (and focused? url) open-in-browser-suffix "")
+                       label-room (max 1 (- inner 3 (count suffix)))
+                       content (str (if focused? " > " "   ")
+                                    (fit-repl-text
+                                     (str (format (str "%-" (max 1 label-width) "s") label)
+                                          "  " (or desc description "")) label-room)
+                                    suffix)
+                       row (str " " (style/sgr "2" "│")
+                                (if focused? (style/primary content) content)
+                                (apply str (repeat (max 0 (- inner (count content))) " "))
+                                (style/sgr "2" "│"))]
+                   (cond-> []
+                     (and separators? (#{2 4} index))
+                     (conj (str " " (style/sgr "2" "│") (apply str (repeat inner " ")) (style/sgr "2" "│")))
+                     true (conj row))))
+               (partial render-menu-overflow-row inner)))]
+    (str/join "\n" (concat [(border "╭" "╮")] rows [(border "╰" "╯")]))))
 
 (defn- render-repl-install-screen
   [state]
@@ -1805,7 +1755,7 @@
              "  ! Error\n"
              (indent-lines lines)
              "\n"
-             (render-repl-rows [{:label "Return to previous REPL dialects menu"}] 0 width 1 false false)
+             (render-repl-rows [{:label "Return to previous REPL dialects menu"}] 0 width 1 false)
              shared-footer
              "\n"))
       :repl-install-menu
@@ -1823,12 +1773,16 @@
             shell-lines (if (< height 18) 4 6)
             helper (take (max 1 (min 8 (- height (count heading) shell-lines 3))) helper)
             box-budget (max 3 (- height (count heading) (count helper) shell-lines))
-            capacity (max 1 (min 4 (- box-budget 2)))]
+            capacity (max 1 (min 4 (- box-budget 2)))
+            window (menu/visible-window items selected capacity)
+            overflow-row-count (count (filter pos? [(:hidden-above window)
+                                                    (:hidden-below window)]))
+            helper (take (max 0 (- (count helper) overflow-row-count)) helper)]
         (str header
              section-gap
              (indent-lines heading)
              "\n"
-             (render-repl-rows items selected width capacity false false)
+             (render-repl-rows items selected width capacity false)
              "\n"
              (helper-slot helper)
              shared-footer
@@ -1866,7 +1820,15 @@
                                                          " "))
                                                 (:description %)))
                                    (repls/available-options)))
-                :resources (resource-items state))]
+                :resources (resource-items state))
+        active-url (:url (active-resource state))
+        error-message (:error state)
+        error-lines (if error-message
+                      (+ (count (str/split-lines error-message))
+                         (if (= step :main-menu) 0 1))
+                      0)
+        capacity (menu-row-capacity state
+                                    (+ (if active-url 1 0) error-lines))]
     (str (main-menu-logo-prefix)
          title
          (str "\n\n\n  "
@@ -1883,13 +1845,15 @@
          (cond
            (= step :repl-menu)
            (render-repl-rows (repls/available-options) (:menu-idx state)
-                             (:term-width state) (max 1 (- (:term-height state) 12)) false true)
+                             (:term-width state) (max 1 (- (:term-height state) 12)) false)
            (= step :resources)
-           (render-resource-list items (:menu-idx state) (:term-width state))
-           :else (render-list items (:menu-idx state) (:term-width state)))
-         (when-let [url (:url (active-resource state))]
-           (str "\n  " (style/secondary url)))
-         (when-let [error-message (:error state)]
+           (render-resource-list items (:menu-idx state) (:term-width state)
+                                 capacity)
+           :else (render-list items (:menu-idx state) (:term-width state)
+                              capacity))
+         (when active-url
+           (str "\n  " (style/secondary active-url)))
+         (when error-message
            (str (if (= step :main-menu) "\n  " "\n\n  ")
                 (style/error error-message)))
          "\n  "
@@ -1993,7 +1957,8 @@
            (when-let [config-error (:config-error state)]
              (str "\n\n  " error-prefix (style/error config-error)))
            "\n\n"
-           (render-list choices choice-idx (:term-width state))
+           (render-list choices choice-idx (:term-width state)
+                        (menu-row-capacity state))
            "\n\n  " (style/secondary "Esc or Ctrl-C: skip")))
 
     ;; Wizard steps
@@ -2011,7 +1976,8 @@
              :project-template
              (render-list ["Library" "App"]
                           (:template-idx state)
-                          (:term-width state))
+                          (:term-width state)
+                          (menu-row-capacity state))
 
              :project-name
              (render-text-field (:project-name state) (:term-width state))
@@ -2027,14 +1993,16 @@
                                          (:term-width state))
                       (render-list items
                                    (:group-idx state)
-                                   (:term-width state)))
+                                   (:term-width state)
+                                   (menu-row-capacity state 2)))
                     "\n  "
                     (helper-text "Add more groups in ~/.config/jus/config.edn")))
 
              :source-layout
              (render-list (source-layout-items state)
                           (:source-layout-idx state)
-                          (:term-width state))
+                          (:term-width state)
+                          (menu-row-capacity state))
 
              :developer
              (let [developers (config/developers (:global-config state))]
@@ -2042,7 +2010,8 @@
                       (render-text-field (:developer state) (:term-width state))
                       (render-list developers
                                    (:developer-idx state)
-                                   (:term-width state)))
+                                   (:term-width state)
+                                   (menu-row-capacity state 2)))
                     "\n  "
                     (helper-text (if (empty? developers)
                                    (str "Leave blank to use the system default: \""
@@ -2056,7 +2025,8 @@
              :license
              (render-list (build-licenses-list (:global-config state))
                           (:license-idx state)
-                          (:term-width state))
+                          (:term-width state)
+                          (menu-row-capacity state))
 
              :confirm
              (render-summary state)
@@ -2071,7 +2041,8 @@
                               [{:label "Browse file tree..."
                                 :type  :browse}])
                    sel      (:nav-idx state)]
-               (render-list items sel (:term-width state)))
+               (render-list items sel (:term-width state)
+                            (menu-row-capacity state)))
 
              :parent-dir-select
              (let [parent-dirs (config/parent-dirs (:global-config state))]
@@ -2084,14 +2055,13 @@
                        parent-dirs
                        (:parent-dirs-idx state)
                        (text-input/value (:project-name state))
-                       (:term-width state))
+                       (:term-width state)
+                       (menu-row-capacity state 2))
                       "\n  "
                       (helper-text "Add additional parent dirs under :tui :projects in config.edn"))))
 
              :path-confirm
-             (let [items   (or (:nav-items state) [])
-                   scroll? (> (count items) max-browse-rows)]
-               (str (render-browse state)))
+             (render-browse state)
 
              :path-confirm-final
              (let [tw       (:term-width state)

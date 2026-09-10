@@ -103,6 +103,35 @@
         (is (every? #(<= % limit) widths))
         (is (<= (count widths) (:term-height state)))))))
 
+(deftest picker-shows-counted-overflow-around-the-focused-task
+  (let [state {:tasks (mapv (fn [index]
+                              {:name (str "task-" index)})
+                            (range 12))
+               :selected-idx 8
+               :scroll-offset 0
+               :animation-phase :done
+               :term-width 59
+               :term-height 12}
+        rendered (#'tasks/picker-view state)
+        plain (strip-ansi rendered)]
+    (is (<= (count (str/split-lines plain)) (:term-height state)))
+    (is (str/includes? plain "> task-8"))
+    (is (str/includes? rendered "\033[2m ↑ 5 more\033[0m"))
+    (is (str/includes? rendered "\033[2m ↓ 3 more\033[0m"))))
+
+(deftest picker-bounds-wrapped-task-content-to-its-row-budget
+  (let [state {:tasks (mapv (fn [index]
+                              {:name (str "very-" (apply str (repeat 10 "long-")) index)
+                               :doc (apply str (repeat 8 "long documentation "))})
+                            (range 8))
+               :selected-idx 5
+               :animation-phase :done
+               :term-width 20
+               :term-height 10}
+        rendered (#'tasks/picker-view state)]
+    (is (<= (count (str/split-lines rendered)) (:term-height state)))
+    (is (str/includes? (strip-ansi rendered) "> very-long-"))))
+
 (deftest picker-styles-cta-hint-and-active-task
   (let [state           {:tasks [{:name "test" :doc "Runs tests"}
                                  {:name "deploy" :doc "Deploys the project"}]
