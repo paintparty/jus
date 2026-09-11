@@ -77,6 +77,14 @@
 (deftest extended-dialects-are-platform-filtered
   (is (= 13 (count (repls/available-options "Mac OS X")))))
 
+(deftest in-1-installations-respect-intel-mac-build-targets
+  (with-redefs [style/intel-mac? true]
+    (is (false? (repls/in-1-installation-supported? :jolt)))
+    (is (false? (repls/in-1-installation-supported? :janet)))
+    (is (true? (repls/in-1-installation-supported? :glojure))))
+  (with-redefs [style/intel-mac? false]
+    (is (true? (repls/in-1-installation-supported? :janet)))))
+
 (deftest platform-and-native-command-contracts
   (is (= 13 (count (repls/available-options "Linux")))))
 

@@ -80,6 +80,19 @@
     (is (str/includes? (screen-for 2)
                        "  https://github.com/glojurelang/glojure#installation"))))
 
+(deftest unsupported-intel-mac-installations-offer-only-the-guide-and-cancel
+  (with-redefs [style/intel-mac? true]
+    (let [state (assoc (missing-menu)
+                       :repl-id :janet :term-width 100 :term-height 24 :menu-idx 0)
+          screen (installer/clean-diagnostics (core/view state))]
+      (is (str/includes? screen "Quick install option via in-1 not available for Intel Mac"))
+      (is (str/includes? screen "View Janet Install Guide"))
+      (is (str/includes? screen "Cancel"))
+      (is (not (str/includes? screen "Install Janet, Temporary")))
+      (is (not (str/includes? screen "Install Janet, Persistent")))
+      (is (= 1 (:menu-idx (first (core/update-fn (assoc state :menu-idx 1)
+                                                 (msg/key-press :down)))))))))
+
 (deftest discovered-runtime-launches-the-resolved-path
   (with-redefs [repls/discover (constantly "/some path/bin/glj")]
     (let [[state command] (core/update-fn (selected) (msg/key-press :enter))]

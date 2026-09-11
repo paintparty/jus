@@ -637,23 +637,25 @@
   [runtime]
   (let [{:keys [label installer guide]} (repls/option runtime)
         command (str "source <(curl -fsSL https://in-1.cc) ")
-        args (if (= runtime :gloat) " --repl" "")]
-    [{:label (str "Install " label ", Temporary") :mode :temporary
-      :desc "Installs via in-1 for current session"
-      :command (str command "--temp " installer " && " installer args)
-      :helper (str "This is a temp install using [in-1](https://in-1.cc), a tool for\n"
-                   "installing things quickly and easily, with no prerequisites.")}
-     {:label (str "Install " label ", Persistent") :mode :persistent
-      :desc "Installs via in-1"
-      :command (str command "--local " installer " PREFIX=\"$HOME/.local\" && " installer args)
-      :helper (str "This is a local install using [in-1](https://in-1.cc), a tool for\n"
-                   "installing things quickly and easily, with no prerequisites.\n"
-                   "It will install " label " in `$HOME/.local/bin/" installer "`")}
-     {:label (str "View " label " Install Guide") :url guide
-      :desc (str "Official " label " installation info")
-      :helper guide}
-     {:label "Cancel" :desc "Returns to previous REPL dialects menu"
-      :helper "Return to the REPL dialects menu."}]))
+        args (if (= runtime :gloat) " --repl" "")
+        install-items [{:label (str "Install " label ", Temporary") :mode :temporary
+                        :desc "Installs via in-1 for current session"
+                        :command (str command "--temp " installer " && " installer args)
+                        :helper (str "This is a temp install using [in-1](https://in-1.cc), a tool for\n"
+                                     "installing things quickly and easily, with no prerequisites.")}
+                       {:label (str "Install " label ", Persistent") :mode :persistent
+                        :desc "Installs via in-1"
+                        :command (str command "--local " installer " PREFIX=\"$HOME/.local\" && " installer args)
+                        :helper (str "This is a local install using [in-1](https://in-1.cc), a tool for\n"
+                                     "installing things quickly and easily, with no prerequisites.\n"
+                                     "It will install " label " in `$HOME/.local/bin/" installer "`")}]
+        guide-and-cancel [{:label (str "View " label " Install Guide") :url guide
+                           :desc (str "Official " label " installation info")
+                           :helper guide}
+                          {:label "Cancel" :desc "Returns to previous REPL dialects menu"
+                           :helper "Return to the REPL dialects menu."}]]
+    (into (if (repls/in-1-installation-supported? runtime) install-items [])
+          guide-and-cancel)))
 
 (defn- return-to-repls
   [state]
@@ -727,7 +729,8 @@
       (or (msg/key-match? message :up) (msg/key-match? message "k"))
       [(update state :menu-idx #(max 0 (dec %))) nil]
       (or (msg/key-match? message :down) (msg/key-match? message "j"))
-      [(update state :menu-idx #(min 4 (inc %))) nil]
+      [(update state :menu-idx #(min (dec (count (repl-install-items (:repl-id state))))
+                                     (inc %))) nil]
       :else [state nil])))
 
 (defn update-fn
@@ -1763,6 +1766,10 @@
             selected (:menu-idx state)
             selected-item (nth items selected)
             heading (style/helper-lines (str "! " label " installation not found.") content-width)
+            unavailable? (not (repls/in-1-installation-supported? (:repl-id state)))
+            unavailable-note (when unavailable?
+                               (style/helper-lines "Quick install option via in-1 not available for Intel Mac"
+                                                   content-width))
             explanation (style/helper-lines (:helper selected-item) content-width)
             helper (if-let [command (:command selected-item)]
                      (concat ["This will run:"]
@@ -1771,9 +1778,9 @@
                              explanation)
                      explanation)
             shell-lines (if (< height 18) 4 6)
-            helper (take (max 1 (min 8 (- height (count heading) shell-lines 3))) helper)
-            box-budget (max 3 (- height (count heading) (count helper) shell-lines))
-            capacity (max 1 (min 4 (- box-budget 2)))
+            helper (take (max 1 (min 8 (- height (count heading) (count unavailable-note) shell-lines 3))) helper)
+            box-budget (max 3 (- height (count heading) (count unavailable-note) (count helper) shell-lines))
+            capacity (max 1 (min (count items) (- box-budget 2)))
             window (menu/visible-window items selected capacity)
             overflow-row-count (count (filter pos? [(:hidden-above window)
                                                     (:hidden-below window)]))
@@ -1781,6 +1788,7 @@
         (str header
              section-gap
              (indent-lines heading)
+             (when unavailable? (str "\n" (indent-lines unavailable-note)))
              "\n"
              (render-repl-rows items selected width capacity false)
              "\n"

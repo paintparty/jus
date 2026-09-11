@@ -27,6 +27,10 @@
         false))))
 (def linux? (target-os? "linux"))
 (def mac? (target-os? "mac"))
+(def intel-mac?
+  (and mac?
+       (contains? #{"x86_64" "amd64"}
+                  (str/lower-case (System/getProperty "os.arch" "")))))
 (def not-mac? (not mac?))
 
 ;; Logo
