@@ -81,7 +81,7 @@
   (with-redefs [style/intel-mac? true]
     (is (false? (repls/in-1-installation-supported? :jolt)))
     (is (false? (repls/in-1-installation-supported? :janet)))
-    (is (true? (repls/in-1-installation-supported? :glojure))))
+    (is (true? (repls/in-1-installation-supported? :phel))))
   (with-redefs [style/intel-mac? false]
     (is (true? (repls/in-1-installation-supported? :janet)))))
 

@@ -1765,10 +1765,11 @@
       (let [items (repl-install-items (:repl-id state))
             selected (:menu-idx state)
             selected-item (nth items selected)
-            heading (style/helper-lines (str "! " label " installation not found.") content-width)
+            heading (style/helper-lines (str error-prefix label " installation not found.") content-width)
             unavailable? (not (repls/in-1-installation-supported? (:repl-id state)))
             unavailable-note (when unavailable?
-                               (style/helper-lines "Quick install option via in-1 not available for Intel Mac"
+                               (style/helper-lines (str error-prefix
+                                                        "Quick install option via in-1 not available for Intel Mac")
                                                    content-width))
             explanation (style/helper-lines (:helper selected-item) content-width)
             helper (if-let [command (:command selected-item)]

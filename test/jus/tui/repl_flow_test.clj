@@ -19,7 +19,8 @@
                   (fn
                     ([] true)
                     ([os-name] (installation-supported? os-name)))]
-      (test-fn))))
+      (with-redefs [style/intel-mac? false]
+        (test-fn)))))
 
 (clojure.test/use-fixtures :each with-extended-platform)
 
@@ -85,7 +86,9 @@
     (let [state (assoc (missing-menu)
                        :repl-id :janet :term-width 100 :term-height 24 :menu-idx 0)
           screen (installer/clean-diagnostics (core/view state))]
-      (is (str/includes? screen "Quick install option via in-1 not available for Intel Mac"))
+      (is (str/includes? screen (str style/error-prefix "Janet installation not found.")))
+      (is (str/includes? screen (str style/error-prefix
+                                     "Quick install option via in-1 not available for Intel Mac")))
       (is (str/includes? screen "View Janet Install Guide"))
       (is (str/includes? screen "Cancel"))
       (is (not (str/includes? screen "Install Janet, Temporary")))
