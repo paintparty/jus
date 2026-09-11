@@ -8,6 +8,7 @@ set driver {
 (require '[jus.tui.core :as core] '[jus.tui.repls :as repls]
          '[jus.tui.repl-installer :as installer]
          '[jus.tui.repl-installer-test :as fixture]
+         '[jus.tui.style :as style]
          '[charm.program :as program] '[clojure.java.io :as io]
          '[babashka.fs :as fs])
 (let [{:keys [env root]} (fixture/fixture!)
@@ -22,7 +23,8 @@ set driver {
   (flush)
   (try
     (spit (io/file (:home env) "bootstrap") bootstrap)
-    (let [state (with-redefs [repls/discover (constantly nil)
+    (let [state (with-redefs [style/intel-mac? false
+                             repls/discover (constantly nil)
                              installer/start! #(start (assoc % :locations env))]
                   (program/run {:init (fn [] [(assoc (core/main-menu-state {}) :step :repl-menu :menu-idx 6) nil])
                                 :update core/update-fn :view core/view :alt-screen true}))]

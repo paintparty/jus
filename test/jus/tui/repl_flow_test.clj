@@ -79,7 +79,7 @@
               "  installing things quickly and easily, with no prerequisites.\n"
               "  It will install Glojure in $HOME/.local/bin/glj")))
     (is (str/includes? (screen-for 2)
-                       "  https://github.com/glojurelang/glojure#installation"))))
+                       "  https://github.com/glojurelang/glojure#prerequisites"))))
 
 (deftest unsupported-intel-mac-installations-offer-only-the-guide-and-cancel
   (with-redefs [style/intel-mac? true]
@@ -157,9 +157,9 @@
         (is (<= (count (str/split-lines plain)) height))
         (when (= index 2)
           (is (str/includes? plain core/open-in-browser-icon))
-          (is (str/includes? screen "\u001b]8;;https://github.com/glojurelang/glojure#installation"))))))
-  (let [state (assoc (selected) :menu-idx 12 :term-height 16)]
-    (is (str/includes? (core/view state) "Phel"))))
+          (is (str/includes? screen "\u001b]8;;https://github.com/glojurelang/glojure#prerequisites"))))))
+  (let [state (assoc (selected) :menu-idx 11 :term-height 16)]
+    (is (not (str/includes? (core/view state) "Phel")))))
 
 (deftest helper-links-have-readable-fallback
   (with-redefs [style/hyperlinks-enabled? (constantly true)]

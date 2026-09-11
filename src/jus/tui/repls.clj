@@ -15,101 +15,102 @@
   ;;     true  = works, prebuilt binary or arch-agnostic runtime
   ;;     false = advertised path refuses or has no Intel Mac artifact
   ;; :intel-mac-note — caveat shown when the path works but isn't a prebuilt binary download.
-  [{:id          :clojure
-    :label       "Clojure"
-    :description "JVM, default"
-    :requires    ["clojure"]
+  [{:id                      :clojure
+    :label                   "Clojure"
+    :description             "JVM, default"
+    :requires                ["clojure"]
     :intel-mac-build-target? true}
-   {:id          :rebel
-    :label       "Clojure with rebel-readline"
-    :description "JVM, nicer experience"
-    :requires    ["clojure"]
+   {:id                      :rebel
+    :label                   "Clojure with rebel-readline"
+    :description             "JVM, nicer experience"
+    :requires                ["clojure"]
     :intel-mac-build-target? true}
-   {:id          :babashka
-    :label       "Babashka"
-    :description "Instant startup, SCI"
-    :requires    ["bb"]
+   {:id                      :babashka
+    :label                   "Babashka"
+    :description             "Instant startup, SCI"
+    :requires                ["bb"]
     :intel-mac-build-target? true}
-   {:id          :clojurescript
-    :label       "ClojureScript"
-    :description "JS"
-    :requires    ["clojure" "node"]
+   {:id                      :clojurescript
+    :label                   "ClojureScript"
+    :description             "JS"
+    :requires                ["clojure" "node"]
     :intel-mac-build-target? true}
-   {:id             :jolt
-    :label          "Jolt"
-    :description    "Chez Scheme"
-    :requires       ["jolt"]
-    :installer      "jolt"
+   {:id                      :jolt
+    :label                   "Jolt"
+    :description             "Chez Scheme"
+    :requires                ["jolt"]
+    :installer               "jolt"
     :intel-mac-build-target? false
-    :intel-mac-note "Install script exits on x86_64-macos; no Intel branch in the Homebrew formula. Build from source (needs Chez Scheme + a C compiler)."
-    :guide          "https://jolt-lang.github.io/docs/getting-started.html"}
-   {:id          :let-go
-    :label       "let-go"
-    :description "Go"
-    :requires    ["lg"]
-    :installer   "lg"
+    :intel-mac-note          "Install script exits on x86_64-macos; no Intel branch in the Homebrew formula. Build from source (needs Chez Scheme + a C compiler)."
+    :guide                   "https://jolt-lang.github.io/docs/getting-started.html"}
+   {:id                      :let-go
+    :label                   "let-go"
+    :description             "Go"
+    :requires                ["lg"]
+    :installer               "lg"
     :intel-mac-build-target? true
-    :guide       "https://github.com/nooga/let-go#install"}
-   {:id             :glojure
-    :label          "Glojure"
-    :description    "Go"
-    :requires       ["glj"]
-    :installer      "glj"
-    :extended?      true
-    :intel-mac-build-target? true
-    :intel-mac-note "Source install only: go install ... cmd/glj@latest, needs Go 1.24+. Releases ship darwin_arm64 but no darwin_amd64."
-    :guide          "https://github.com/glojurelang/glojure#installation"}
-   {:id             :gloat
-    :label          "Gloat"
-    :description    "Go"
-    :requires       ["gloat"]
-    :installer      "gloat"
-    :extended?      true
-    :args           ["--repl"]
-    :intel-mac-build-target? true
-    :intel-mac-note "Source install only: no release assets at all. Makefile installer clones the repo and builds glj from source; it maps macos-int64 to darwin_amd64."
-    :guide          "https://github.com/gloathub/gloat#installation"}
-   {:id          :gobb
-    :label       "Gobb"
-    :description "Go"
-    :requires    ["gobb"]
-    :installer   "gobb"
-    :extended?   true
-    :intel-mac-build-target? true
-    :guide       "https://github.com/gloathub/gobb"}
-   {:id          :hy
-    :label       "Hy"
-    :description "Python"
-    :requires    ["hy"]
-    :installer   "hy"
-    :extended?   true
-    :intel-mac-build-target? true
-    :guide       "https://hylang.org/hy/doc/stable/"}
-   {:id             :janet
-    :label          "Janet"
-    :description    "C"
-    :requires       ["janet"]
-    :installer      "janet"
-    :extended?      true
+    :guide                   "https://github.com/nooga/let-go#install"}
+   {:id                      :glojure
+    :label                   "Glojure"
+    :description             "Go"
+    :requires                ["glj"]
+    :installer               "glj"
+    :extended?               true
     :intel-mac-build-target? false
-    :intel-mac-note "No prebuilt macOS x64 since v1.38.0 (current releases ship macos-aarch64 only). Use Homebrew or build from source."
-    :guide          "https://janet-lang.org/docs/documentation.html"}
-   {:id          :joker
-    :label       "Joker"
-    :description "Go"
-    :requires    ["joker"]
-    :installer   "joker"
-    :extended?   true
+    :intel-mac-note          "Source install only: go install ... cmd/glj@latest, needs Go 1.24+. Releases ship darwin_arm64 but no darwin_amd64."
+    :guide                   "https://github.com/glojurelang/glojure#prerequisites"}
+   {:id                      :gloat
+    :label                   "Gloat"
+    :description             "Go"
+    :requires                ["gloat"]
+    :installer               "gloat"
+    :extended?               true
+    :args                    ["--repl"]
+    :intel-mac-build-target? false
+    :intel-mac-note          "Source install only: no release assets at all. Makefile installer clones the repo and builds glj from source; it maps macos-int64 to darwin_amd64."
+    :guide                   "https://github.com/gloathub/gloat#installation"}
+   {:id                      :gobb
+    :label                   "Gobb"
+    :description             "Go"
+    :requires                ["gobb"]
+    :installer               "gobb"
+    :extended?               true
     :intel-mac-build-target? true
-    :guide       "https://github.com/candid82/joker#installation"}
-   {:id          :phel
-    :label       "Phel"
-    :description "PHP"
-    :requires    ["phel"]
-    :installer   "phel"
-    :extended?   true
+    :guide                   "https://github.com/gloathub/gobb"}
+   {:id                      :hy
+    :label                   "Hy"
+    :description             "Python"
+    :requires                ["hy"]
+    :installer               "hy"
+    :extended?               true
     :intel-mac-build-target? true
-    :guide       "https://phel-lang.org/documentation/installation/"}])
+    :guide                   "https://hylang.org/hy/doc/stable/"}
+   {:id                      :janet
+    :label                   "Janet"
+    :description             "C"
+    :requires                ["janet"]
+    :installer               "janet"
+    :extended?               true
+    :intel-mac-build-target? false
+    :intel-mac-note          "No prebuilt macOS x64 since v1.38.0 (current releases ship macos-aarch64 only). Use Homebrew or build from source."
+    :guide                   "https://janet-lang.org/docs/documentation.html"}
+   {:id                      :joker
+    :label                   "Joker"
+    :description             "Go"
+    :requires                ["joker"]
+    :installer               "joker"
+    :extended?               true
+    :intel-mac-build-target? true
+    :guide                   "https://github.com/candid82/joker#installation"}
+   {:id                      :phel
+    :label                   "Phel"
+    :description             "PHP"
+    :requires                ["phel"]
+    :installer               "phel"
+    :extended?               true
+    :enabled?                false
+    :intel-mac-build-target? true
+    :guide                   "https://phel-lang.org/documentation/installation/"}])
 
 (defn installation-supported?
   ([] (installation-supported? (System/getProperty "os.name" "")))
@@ -117,8 +118,10 @@
 
 (defn available-options
   ([] (available-options (System/getProperty "os.name" "")))
-  ([os-name] (filterv #(or (not (:extended? %))
-                           (installation-supported? os-name)) options)))
+  ([os-name] (filterv #(and (:enabled? % true)
+                            (or (not (:extended? %))
+                                (installation-supported? os-name)))
+                      options)))
 
 (defn option
   [id]
