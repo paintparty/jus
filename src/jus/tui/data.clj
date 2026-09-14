@@ -62,7 +62,17 @@
                :url   "https://clojure.land/"}
               {:label "Scicloj Resources"
                :desc  "List of data science tools & libraries"
-               :url   "https://scicloj.github.io/docs/resources/libs/"}]}
+               :url   "https://scicloj.github.io/docs/resources/libs/"}
+              {:label "Clojure Commons"
+               :desc  "Community-led project for library maintainence."
+               :url   "https://clj-commons.org/"}
+              {:label "Jolt Commons"
+               :desc  "Shared home for Jolt libraries and tooling"
+               :url   "https://jlt-commons.github.io/"}
+              {:label "Curated repo of packages by the Jank Community"
+               :desc  "https://github.com/jank-lang/commons"
+               :url   "https://github.com/jank-lang/commons"}
+              ]}
 
    {:label   "Discussion"
     :desc    "Online forums"
@@ -415,4 +425,7 @@
                :url   "https://github.com/razum2um/awesome-clojure"}
               {:label "Awesome Jolt"
                :desc  "Libraries, tools, and resources for Jolt"
-               :url   "https://github.com/jlt-commons/awesome-jolt"}]}])
+               :url   "https://github.com/jlt-commons/awesome-jolt"}
+              {:label "Awesome Jank"
+               :desc  "Curated list of awesome Jank projects"
+               :url   "https://github.com/jank-lang/awesome-jank"}]}])
