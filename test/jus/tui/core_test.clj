@@ -1638,6 +1638,15 @@
     (is (str/includes? result "jus tasks"))
     (is (= "" (str err)))))
 
+(deftest cli-version-flags-print-the-jus-version-to-stdout
+  (doseq [flag ["-version" "--version" "version"]]
+    (let [err    (java.io.StringWriter.)
+          output (binding [*err* err]
+                   (with-out-str
+                     (is (= 0 (core/run-cli! flag)))))]
+      (is (= (str "jus " core/version "\n") output))
+      (is (= "" (str err))))))
+
 (deftest cli-rejects-unknown-arguments-on-stderr
   (let [err    (java.io.StringWriter.)
         output (binding [*err* err]

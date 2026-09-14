@@ -21,6 +21,10 @@
 
 (def project-created "  ✓ Project created")
 
+(def version
+  "The current jus release version."
+  "0.2.0")
+
 (def open-in-browser-icon (if @style/windows-10? ">" "↗"))
 
 (def open-in-browser-suffix (str " " open-in-browser-icon " "))
@@ -2140,6 +2144,7 @@
          "  jus          Launch the TUI\n"
          "  jus tasks    Pick and run a public bb task from ./bb.edn\n"
          "  jus t        Shorthand for `jus tasks`\n"
+         "  jus version  Print the jus version\n"
          "\n"
          logo+link
          "\n\n")))
@@ -2311,6 +2316,11 @@
     (["-h"] ["--help"])
     (do
       (print (usage))
+      0)
+
+    (["-version"] ["--version"] ["version"])
+    (do
+      (println "jus" version)
       0)
 
     (do
