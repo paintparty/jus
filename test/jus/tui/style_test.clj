@@ -31,3 +31,15 @@
   (with-redefs [style/hyperlinks-enabled? (constantly false)]
     (is (= ["first line" "second line"]
            (style/helper-lines "first line\nsecond line" 80)))))
+
+(deftest no-color-does-not-disable-terminal-hyperlinks
+  (is (= "\033]8;;https://babashka.org/\033\\Babashka\033]8;;\033\\"
+         (style/hyperlink-for-environment
+          "Babashka"
+          "https://babashka.org/"
+          {"NO_COLOR" "1" "TERM" "xterm-ghostty"})))
+  (is (= "Babashka"
+         (style/hyperlink-for-environment
+          "Babashka"
+          "https://babashka.org/"
+          {"TERM" "dumb"}))))

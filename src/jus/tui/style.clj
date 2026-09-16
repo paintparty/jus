@@ -155,15 +155,30 @@
     (primary s)
     (charm-style/render (charm-style/style :fg accent-hex :bold true) s)))
 
+(defn hyperlinks-enabled-for-environment?
+  "Whether a terminal environment should receive OSC-8 hyperlinks.
+   NO_COLOR controls color styling, not link capabilities."
+  [environment]
+  (not= "dumb" (get environment "TERM")))
+
 (defn hyperlinks-enabled?
   []
-  (and (nil? (System/getenv "NO_COLOR"))
-       (not= "dumb" (System/getenv "TERM"))))
+  (hyperlinks-enabled-for-environment? (System/getenv)))
+
+(defn- osc-8-hyperlink
+  [label url]
+  (str "\033]8;;" url "\033\\" label "\033]8;;\033\\"))
+
+(defn hyperlink-for-environment
+  [label url environment]
+  (if (hyperlinks-enabled-for-environment? environment)
+    (osc-8-hyperlink label url)
+    label))
 
 (defn hyperlink
   [label url]
   (if (hyperlinks-enabled?)
-    (str "\033]8;;" url "\033\\" label "\033]8;;\033\\")
+    (osc-8-hyperlink label url)
     label))
 
 (defn helper-lines
