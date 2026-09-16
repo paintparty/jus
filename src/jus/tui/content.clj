@@ -2,6 +2,10 @@
   (:require [clojure.string :as str]
             [jus.tui.style :as style]))
 
+(def content-padding-block
+  "Blank rows added inside the top and bottom of a content container."
+  1)
+
 (defn render
   "Render read-only text in a width-aware bordered container.
    The container grows vertically with its wrapped contents."
@@ -21,7 +25,10 @@
                         (str " " (style/secondary "│")
                              (apply str (repeat padding-start " ")) line
                              (apply str (repeat (max 0 (- inner-width padding-start padding-end visible-width)) " "))
-                             (apply str (repeat padding-end " ")) (style/secondary "│"))))]
+                             (apply str (repeat padding-end " ")) (style/secondary "│"))))
+        block-padding (repeat (max 0 content-padding-block) (row ""))]
     (str/join "\n" (concat [(border "╭" "╮")]
+                           block-padding
                            (map row lines)
+                           block-padding
                            [(border "╰" "╯")]))))
