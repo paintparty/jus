@@ -626,6 +626,7 @@
     (is (= 2 (:menu-idx up)))
     (is (= :repl (:action launch)))
     (is (= :babashka (:repl-id launch)))
+    (is (= 2 (:repl-menu-idx launch)))
     (is (= program/quit-cmd launch-cmd))
     (is (= :main-menu (:step back)))
     (is (zero? (:menu-idx back)))
@@ -1641,9 +1642,13 @@
 
 (deftest repl-handoff-does-not-clear-the-console-again
   (let [launched (atom nil)
-        final-state {:action :repl :repl-id :babashka}]
+        final-states (atom [{:action :repl :repl-id :babashka}
+                            {:done? true :exit-code 0}])]
     (with-redefs-fn {#'core/clear-console-on-launch? false
-                     #'program/run (constantly final-state)
+                     #'program/run (fn [_]
+                                     (let [state (first @final-states)]
+                                       (swap! final-states subvec 1)
+                                       state))
                      #'config/global-config-path (constantly "/tmp/jus-config.edn")
                      #'config/load-config-result (constantly {:config {}
                                                               :exists? false})
@@ -1653,6 +1658,29 @@
       #(let [output (with-out-str (#'core/run-wizard!))]
          (is (= "" output))
          (is (= :babashka @launched))))))
+
+(deftest normal-repl-exit-returns-to-the-selected-repl-menu
+  (let [initial-states (atom [])
+        final-states (atom [{:action :repl :repl-id :babashka
+                             :repl-menu-idx 2}
+                            {:done? true :exit-code 0}])]
+    (with-redefs-fn {#'core/clear-console-on-launch? false
+                     #'animation/initialize-main-menu (fn [state] [state nil])
+                     #'program/run (fn [{:keys [init]}]
+                                     (swap! initial-states conj (first (init)))
+                                     (let [state (first @final-states)]
+                                       (swap! final-states subvec 1)
+                                       state))
+                     #'config/global-config-path (constantly "/tmp/jus-config.edn")
+                     #'config/load-config-result (constantly {:config {}
+                                                              :exists? false})
+                     #'core/run-repl! (constantly 0)}
+      #(do
+         (is (= 0 (core/run-cli!)))
+         (is (= 2 (count @initial-states)))
+         (is (= :repl-menu (:step (second @initial-states))))
+         (is (= 2 (:menu-idx (second @initial-states))))
+         (is (nil? (:action (second @initial-states))))))))
 
 (deftest cli-help-prints-usage-to-stdout
   (let [err    (java.io.StringWriter.)
@@ -1691,26 +1719,22 @@
             "--color-theme" "neutral-screen-theme"]
            [main-flag main-opt module color-theme-flag color-theme]))))
 
-(deftest repl-replaces-the-babashka-process
+(deftest repl-waits-for-the-handoff-process-on-babashka
   (let [command  ["bb" "-cp" (#'core/repl-handoff-classpath)
                   "-m" "repl-handoff.launch" "rebel"]
-        executed (atom nil)]
-    (with-redefs-fn {#'core/babashka-runtime? (constantly true)
-                     #'core/exec-process! #(reset! executed %)
-                     #'core/run-child-process! (fn [_]
-                                                 (throw (Exception. "unexpected child process")))}
+        started (atom nil)]
+    (with-redefs-fn {#'core/run-child-process! (fn [actual]
+                                                 (reset! started actual)
+                                                 23)}
       #(do
-         (#'core/run-repl!)
-         (is (= command @executed))
-         (let [classpath (java.io.File. (nth @executed 2))]
+         (is (= 23 (#'core/run-repl!)))
+         (is (= command @started))
+         (let [classpath (java.io.File. (nth @started 2))]
            (is (.isAbsolute classpath))
            (is (.isDirectory classpath)))))))
 
 (deftest repl-waits-for-a-child-process-on-the-jvm
-  (with-redefs-fn {#'core/babashka-runtime? (constantly false)
-                   #'core/exec-process! (fn [_]
-                                          (throw (Exception. "unexpected exec")))
-                   #'core/run-child-process! (constantly 23)}
+  (with-redefs-fn {#'core/run-child-process! (constantly 23)}
     #(is (= 23 (#'core/run-repl!)))))
 
 (deftest cli-launches-wizard-without-global-repl-preflights

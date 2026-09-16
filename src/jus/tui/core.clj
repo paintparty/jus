@@ -968,7 +968,9 @@
                           :menu-idx 0 :error (.getMessage e)) nil]))
               (if-let [missing (some #(when-not (executable-available? %) %) (:requires runtime))]
                 [(assoc state :error (repls/missing-executable-message missing)) nil]
-                [(assoc state :repl-id (:id runtime) :action :repl :error nil) program/quit-cmd]))))
+                [(assoc state :repl-id (:id runtime)
+                        :repl-menu-idx (:menu-idx state)
+                        :action :repl :error nil) program/quit-cmd]))))
 
         :resources
         (let [{:keys [entries url label menu-label]} (nth (resource-items state)
@@ -2222,15 +2224,6 @@
    "--color-theme"
    "neutral-screen-theme"])
 
-(defn- babashka-runtime?
-  []
-  (some? (System/getProperty "babashka.version")))
-
-(defn- exec-process!
-  [command]
-  (require '[babashka.process])
-  (apply (resolve 'babashka.process/exec) command))
-
 (defn- run-child-process!
   [command]
   (-> (ProcessBuilder. ^java.util.List command)
@@ -2260,9 +2253,7 @@
      (let [command (cond-> ["bb" "-cp" (repl-handoff-classpath) "-m" "repl-handoff.launch"
                             (name runtime)]
                      executable (conj executable))]
-       (if (babashka-runtime?)
-         (exec-process! command)
-         (run-child-process! command)))
+       (run-child-process! command))
      (catch Exception exception
        (binding [*out* *err*]
          (println "Unable to start REPL:" (.getMessage exception)))
@@ -2274,6 +2265,16 @@
   (print "\033[H\033[2J")
   (flush))
 
+(defn- repl-menu-state-after-exit
+  [state]
+  (-> state
+      (assoc :step :repl-menu
+             :menu-idx (or (:repl-menu-idx state) 0)
+             :done? false
+             :exit-code nil
+             :error nil)
+      (dissoc :action :repl-executable)))
+
 (defn- run-wizard!
   []
   (when clear-console-on-launch?
@@ -2283,24 +2284,30 @@
         _                            (when error
                                        (config/report-config-load-error!
                                         path error location))
-        final-state
-        (program/run {:init       #(animation/initialize-main-menu
-                                    (assoc (main-menu-state config)
-                                           :global-config-exists? exists?))
-                      :update     #'update-fn
-                      :view       #'view
-                      :alt-screen true})]
-    (cond
-      (= :repl (:action final-state))
-      (if-let [executable (:repl-executable final-state)]
-        (run-repl! (:repl-id final-state) executable)
-        (run-repl! (:repl-id final-state)))
+        initial-state                 (assoc (main-menu-state config)
+                                             :global-config-exists? exists?)]
+    (loop [state initial-state
+           opening? true]
+      (let [final-state (program/run {:init       #(if opening?
+                                                     (animation/initialize-main-menu state)
+                                                     [state nil])
+                                      :update     #'update-fn
+                                      :view       #'view
+                                      :alt-screen true})]
+        (cond
+          (= :repl (:action final-state))
+          (let [exit-code (if-let [executable (:repl-executable final-state)]
+                            (run-repl! (:repl-id final-state) executable)
+                            (run-repl! (:repl-id final-state)))]
+            (if (zero? exit-code)
+              (recur (repl-menu-state-after-exit final-state) false)
+              exit-code))
 
-      (:done? final-state)
-      (or (:exit-code final-state) 0)
+          (:done? final-state)
+          (or (:exit-code final-state) 0)
 
-      :else
-      (or (:exit-code final-state) 0))))
+          :else
+          (or (:exit-code final-state) 0))))))
 
 (defn- current-bb-edn-path
   []

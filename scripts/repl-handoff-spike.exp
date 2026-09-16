@@ -235,6 +235,83 @@ proc assert_pre_readiness_cleanup {} {
   puts "PASS pre-readiness cleanup: startup failure and Ctrl-C both clear the spinner and release the PTY"
 }
 
+proc assert_jus_session_resume {} {
+  global cache_dir repo_root temp_root
+  set transcript_path [file join $temp_root "jus-session-resume.log"]
+  log_file -a -noappend $transcript_path
+  spawn -noecho sh -c {stty rows 40 columns 120; cd "$1"; shift; exec "$@"} \
+    sh $repo_root env "XDG_CACHE_HOME=$cache_dir" \
+    "XDG_CONFIG_HOME=[file join $temp_root config]" bb jus
+  set channel $spawn_id
+
+  expect {
+    -i $channel
+    -re {New Project Wizard} {}
+    timeout {fail "jus did not reach its main menu"}
+    eof {fail "jus exited before its main menu"}
+  }
+  send -i $channel "\033\[B\r"
+  expect {
+    -i $channel
+    -re {Select REPL type} {}
+    timeout {fail "jus did not open its REPL picker"}
+    eof {fail "jus exited before its REPL picker"}
+  }
+  send -i $channel "\033\[B\033\[B\r"
+  expect {
+    -i $channel
+    -re {user=>} {}
+    timeout {fail "Babashka did not reach its prompt from jus"}
+    eof {fail "Babashka exited before its prompt from jus"}
+  }
+  send -i $channel "\003"
+  expect {
+    -i $channel
+    -re {user=>} {}
+    timeout {fail "Babashka Ctrl-C did not return to its prompt under jus supervision"}
+    eof {fail "Babashka Ctrl-C unexpectedly exited under jus supervision"}
+  }
+  send -i $channel "\004"
+  expect {
+    -i $channel
+    -re {Select REPL type} {}
+    timeout {fail "normal REPL exit did not return to the jus REPL picker"}
+    eof {fail "jus exited instead of resuming its REPL picker"}
+  }
+  send -i $channel "\r"
+  expect {
+    -i $channel
+    -re {Starting Babashka\.\.\.} {}
+    timeout {fail "resumed REPL picker did not preserve the Babashka selection"}
+    eof {fail "jus exited before relaunching the selected Babashka runtime"}
+  }
+  expect {
+    -i $channel
+    -re {user=>} {}
+    timeout {fail "reselected Babashka did not reach its prompt"}
+    eof {fail "reselected Babashka exited before its prompt"}
+  }
+  send -i $channel "\004"
+  expect {
+    -i $channel
+    -re {Select REPL type} {}
+    timeout {fail "second normal REPL exit did not return to jus"}
+    eof {fail "jus exited after the second normal REPL exit"}
+  }
+  send -i $channel "\003"
+  expect {
+    -i $channel
+    eof {}
+    timeout {fail "resumed jus session did not exit on Ctrl-C"}
+  }
+  set status [wait_status $channel]
+  log_file
+  if {$status != 130} {
+    fail "resumed jus session exited $status instead of 130"
+  }
+  puts "PASS jus session resume: REPL Ctrl-C stays native and Ctrl-D returns to the selected REPL picker"
+}
+
 proc wait_status {channel} {
   set result [wait -i $channel]
   if {[info exists ::env(SPIKE_VERBOSE)]} {
@@ -490,6 +567,7 @@ puts "PASS $runtime_label(clojurescript): spinner cleared before one version and
 assert_managed_cljs_cache $before_cljs_tree
 puts "PASS ClojureScript cache: all compiler output stayed under XDG_CACHE_HOME/jus/cljs-repl/1.12.145/<cwd-sha256>"
 puts "PASS terminal handoff: no alternate-screen residue, launch cursor controls, waiting Babashka Rebel parent, or Rebel thread loop"
+assert_jus_session_resume
 puts "PASS all four runtimes"
 
 file delete -force $temp_root
