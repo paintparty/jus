@@ -7,6 +7,7 @@
             [babashka.fs :as fs]
             [jus.tui.animation :as animation]
             [jus.tui.config :as config]
+            [jus.tui.content :as content]
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
             [jus.tui.menu :as menu]
@@ -89,13 +90,16 @@
                         :nav-label l})
    :resources        (let [l "Explore Community Resources"]
                        {:label     l
-                        :nav-label "Community Resources"})})
+                        :nav-label "Community Resources"})
+   :about            (let [l "About"]
+                       {:label     l
+                        :nav-label l})})
 
 (defn main-menu-choices []
   (vec (concat
         (when dev-success-sequence? [:success-sequence])
         (when dev-opening-sequence? [:opening-sequence])
-        [:wizard :repl :resources])))
+        [:wizard :repl :resources :about])))
 
 (defn main-menu-items []
   (mapv #(get-in main-menu-items* [% :label]) (main-menu-choices)))
@@ -232,6 +236,9 @@
 
 (defn- menu-screen? [step]
   (boolean (some #{step} [:main-menu :repl-menu :resources])))
+
+(def about-content
+  "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, run tasks, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [rewrite-clj](https://github.com/clj-commons/rewrite-clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to deps-new.\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty")
 
 (defn- resource-items [state]
   (or (peek (:resource-stack state)) data/community-resources))
@@ -940,6 +947,9 @@
                   :resource-selection-stack []
                   :error nil) nil]
 
+          :about
+          [(assoc state :step :about :error nil) nil]
+
           [state nil])
 
         :repl-menu
@@ -1001,6 +1011,13 @@
 
       :else
       [state nil])
+
+    ;; Read-only screens return to the main menu without participating in menu navigation.
+    (= :about (:step state))
+    (cond
+      (msg/key-match? msg "ctrl+c") [state program/quit-cmd]
+      (msg/key-match? msg :escape) [(assoc state :step :main-menu :menu-idx 0 :error nil) nil]
+      :else [state nil])
 
     ;; Global Ctrl-C exits wizard steps that did not handle it earlier.
     (msg/key-match? msg "ctrl+c")
@@ -1873,6 +1890,18 @@
          (help-bar step)
          "\n")))
 
+(defn render-about-screen
+  "Render the read-only About page using the reusable reflowing content container."
+  [state]
+  (str (main-menu-logo-prefix)
+       main-menu-logo-with-nav
+       (style/italic (-> main-menu-items* :about :nav-label))
+       "\n\n\n  About Jus\n"
+       (content/render about-content (:term-width state))
+       "\n"
+       (help-bar :about)
+       "\n"))
+
 (defn view
   "Charm.clj view. Renders the current state to a string."
   [state]
@@ -1891,6 +1920,9 @@
 
     (#{:repl-install-menu :repl-installing :repl-error} (:step state))
     (render-repl-install-screen state)
+
+    (= :about (:step state))
+    (render-about-screen state)
 
     (and (menu-screen? (:step state))
          (not (:success-pause state))

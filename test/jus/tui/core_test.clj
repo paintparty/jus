@@ -363,6 +363,21 @@
       (is (str/includes? rendered "New Project Wizard"))
       (is (str/includes? rendered "Launch Interactive REPL")))))
 
+(deftest main-menu-routes-to-a-resizable-about-page
+  (let [initial (core/main-menu-state example-global-config)
+        about-index (.indexOf (core/main-menu-choices) :about)
+        [about _] (core/update-fn (assoc initial :menu-idx about-index)
+                                  (msg/key-press :enter))
+        [back _] (core/update-fn about (msg/key-press :escape))
+        wide (core/strip-ansi (core/view (assoc about :term-width 80)))
+        narrow (core/strip-ansi (core/view (assoc about :term-width 40)))]
+    (is (= :about (:step about)))
+    (is (= :main-menu (:step back)))
+    (is (str/includes? wide "About Jus"))
+    (is (str/includes? wide "https://github.com/paintparty/jus"))
+    (is (> (count (str/split-lines narrow))
+           (count (str/split-lines wide))))))
+
 (deftest development-success-sequence-can-be-played-from-the-main-menu
   (let [initial (core/main-menu-state example-global-config)]
     (with-redefs [core/dev-success-sequence? false]
