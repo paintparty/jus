@@ -12,7 +12,9 @@
       (is (= 4 (count (str/split-lines (core/strip-ansi wide)))))
       (is (= 7 (count (str/split-lines (core/strip-ansi narrow)))))
       (is (every? #(= 19 (count %))
-                  (str/split-lines (core/strip-ansi narrow)))))))
+                  (str/split-lines (core/strip-ansi narrow))))
+      (is (str/starts-with? (second (str/split-lines (core/strip-ansi narrow)))
+                            " │   A sentence")))))
 
 (deftest content-box-preserves-active-links-through-wrapping
   (with-redefs [style/hyperlinks-enabled? (constantly true)]

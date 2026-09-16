@@ -370,13 +370,23 @@
                                   (msg/key-press :enter))
         [back _] (core/update-fn about (msg/key-press :escape))
         wide (core/strip-ansi (core/view (assoc about :term-width 80)))
-        narrow (core/strip-ansi (core/view (assoc about :term-width 40)))]
+        narrow (core/strip-ansi (core/view (assoc about :term-width 40)))
+        urls ["https://babashka.org/"
+              "https://github.com/TimoKramer/charm.clj"
+              "https://github.com/clj-commons/rewrite-clj"
+              "https://github.com/weavejester/cljfmt"
+              "https://github.com/paintparty/jus"
+              "https://github.com/sponsors/paintparty"]]
     (is (= :about (:step about)))
     (is (= :main-menu (:step back)))
     (is (str/includes? wide "About Jus"))
     (is (str/includes? wide "https://github.com/paintparty/jus"))
     (is (> (count (str/split-lines narrow))
-           (count (str/split-lines wide))))))
+           (count (str/split-lines wide))))
+    (with-redefs [style/hyperlinks-enabled? (constantly true)]
+      (let [rendered (core/view (assoc about :term-width 100))]
+        (doseq [url urls]
+          (is (str/includes? rendered (str "\033]8;;" url "\033\\"))))))))
 
 (deftest development-success-sequence-can-be-played-from-the-main-menu
   (let [initial (core/main-menu-state example-global-config)]
