@@ -33,7 +33,7 @@
            (style/helper-lines "first line\nsecond line" 80)))))
 
 (deftest no-color-does-not-disable-terminal-hyperlinks
-  (is (= "\033]8;;https://babashka.org/\033\\Babashka\033]8;;\033\\"
+  (is (= "\033]8;;https://babashka.org/\033\\\033[4mBabashka\033[24m\033]8;;\033\\"
          (style/hyperlink-for-environment
           "Babashka"
           "https://babashka.org/"

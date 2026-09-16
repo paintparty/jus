@@ -167,7 +167,9 @@
 
 (defn- osc-8-hyperlink
   [label url]
-  (str "\033]8;;" url "\033\\" label "\033]8;;\033\\"))
+  (str "\033]8;;" url "\033\\"
+       "\033[4m" label "\033[24m"
+       "\033]8;;\033\\"))
 
 (defn hyperlink-for-environment
   [label url environment]

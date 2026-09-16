@@ -24,7 +24,7 @@
 (deftest content-box-preserves-active-links-through-wrapping
   (with-redefs [style/hyperlinks-enabled? (constantly true)]
     (let [rendered (content/render "Built with [Babashka](https://babashka.org/)." 40)]
-      (is (str/includes? rendered "\033]8;;https://babashka.org/\033\\Babashka\033]8;;\033\\"))
+      (is (str/includes? rendered "\033]8;;https://babashka.org/\033\\\033[4mBabashka\033[24m\033]8;;\033\\"))
       (is (every? #(= 39 (count (core/strip-ansi
                                  (str/replace % #"\033]8;;[^\033]*\033\\" ""))))
                   (str/split-lines rendered))))))
