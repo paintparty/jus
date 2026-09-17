@@ -4,6 +4,7 @@
 ## 0.2.0
 
 ### Changed
+- Hand off missing REPL installation to copyable in-1 snippets instead of running the installer inside jus.
 - Use "*" for loading spinner.
 - UX writing updates
 - Speed up `jus tasks` reveal animation

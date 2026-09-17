@@ -1,5 +1,7 @@
 (ns jus.tui.repls-test
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [clojure.java.io :as io]
+            [clojure.test :refer [deftest is testing]]
+            [babashka.fs :as fs]
             [jus.tui.style :as style]
             [jus.tui.repls :as repls]))
 
@@ -86,6 +88,39 @@
     (is (true? (repls/in-1-installation-supported? :phel))))
   (with-redefs [style/intel-mac? false]
     (is (true? (repls/in-1-installation-supported? :janet)))))
+
+(deftest install-snippets-install-and-launch-in-a-fresh-bash-session
+  (is (= "bash -c 'source <(curl -fsSL https://in-1.cc) --temp glj && exec glj'"
+         (repls/install-snippet :glojure :temporary)))
+  (is (= (str "bash -c 'source <(curl -fsSL https://in-1.cc) --local glj "
+              "PREFIX=\"$HOME/.local\" && exec glj'")
+         (repls/install-snippet :glojure :persistent)))
+  (is (= (str "bash -c 'source <(curl -fsSL https://in-1.cc) --temp gloat "
+              "&& exec gloat --repl'")
+         (repls/install-snippet :gloat :temporary))))
+
+(deftest discovery-prefers-path-then-persistent-then-temporary
+  (let [root (fs/create-temp-dir {:prefix "jus repl discovery "})
+        bin (fs/create-dirs (fs/path root "tools"))
+        env {:home (str (fs/create-dirs (fs/path root "home")))
+             :tmp (str (fs/create-dirs (fs/path root "tmp")))
+             :path (str bin)}
+        temporary (io/file (repls/install-prefix :temporary env) "bin/glj")
+        persistent (io/file (repls/install-prefix :persistent env) "bin/glj")
+        on-path (io/file (str bin) "glj")
+        make-executable! (fn [file]
+                           (io/make-parents file)
+                           (spit file "#!/bin/sh\nexit 0\n")
+                           (.setExecutable file true)
+                           file)]
+    (try
+      (is (nil? (repls/discover :glojure env)))
+      (doseq [file [temporary persistent on-path]]
+        (make-executable! file)
+        (is (= (str file) (repls/discover :glojure env))))
+      (.setExecutable on-path false)
+      (is (= (str persistent) (repls/discover :glojure env)))
+      (finally (fs/delete-tree root)))))
 
 (deftest platform-and-native-command-contracts
   (is (= 12 (count (repls/available-options "Linux")))))

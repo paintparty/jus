@@ -234,6 +234,17 @@
     :temporary (str (io/file tmp "in-1"))
     :persistent (str (io/file home ".local"))))
 
+(defn install-snippet
+  "Builds a Bash command that installs a runtime with in-1 and launches it."
+  [id mode]
+  (let [{:keys [installer args]} (option! id)
+        install-args (case mode
+                       :temporary (str "--temp " installer)
+                       :persistent (str "--local " installer " PREFIX=\"$HOME/.local\""))
+        launch (str/join " " (cons installer args))]
+    (str "bash -c 'source <(curl -fsSL https://in-1.cc) " install-args
+         " && exec " launch "'")))
+
 (defn executable-path
   "Return an absolute executable file path, or nil."
   [path]

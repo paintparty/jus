@@ -1,0 +1,56 @@
+#!/usr/bin/env expect
+# Deterministic PTY checks for the external in-1 clipboard handoff.
+set timeout 30
+log_user [expr {[info exists env(JUS_PTY_VERBOSE)] ? 1 : 0}]
+set osc_pattern "\033\\]52;c;(\[A-Za-z0-9+/=\]+)\007"
+set driver {
+(require '[jus.tui.core :as core] '[jus.tui.repls :as repls]
+         '[jus.tui.style :as style] '[charm.program :as program])
+(let [state (with-redefs [style/intel-mac? false
+                          repls/discover (constantly nil)]
+              (program/run {:init (fn [] [(assoc (core/main-menu-state {})
+                                                  :step :repl-menu :menu-idx 6)
+                                          nil])
+                            :update core/update-fn :view core/view :alt-screen true}))]
+  (println "EXIT_CODE" (:exit-code state))
+  (flush))
+}
+
+proc expect_text {pattern description} {
+    expect {
+        -re $pattern {}
+        timeout {error "Timed out: $description"}
+        eof {error "Unexpected EOF: $description"}
+    }
+}
+
+foreach {mode expected} {
+    temporary {YmFzaCAtYyAnc291cmNlIDwoY3VybCAtZnNTTCBodHRwczovL2luLTEuY2MpIC0tdGVtcCBnbGogJiYgZXhlYyBnbGon}
+    persistent {YmFzaCAtYyAnc291cmNlIDwoY3VybCAtZnNTTCBodHRwczovL2luLTEuY2MpIC0tbG9jYWwgZ2xqIFBSRUZJWD0iJEhPTUUvLmxvY2FsIiAmJiBleGVjIGdsaic=}
+} {
+    spawn -noecho bb -e $driver
+    stty rows 24 columns 120 < $spawn_out(slave,name)
+    expect_text {Select REPL type} "dialect menu"
+    send -- "\r"
+    expect_text {Glojure installation not found} "copy menu"
+    if {$mode eq "persistent"} {send -- "\033\[B"}
+    send -- "\r"
+    expect {
+        -re $osc_pattern {
+            if {$expect_out(1,string) ne $expected} {
+                error "$mode clipboard payload mismatch"
+            }
+        }
+        timeout {error "Timed out: $mode OSC 52 clipboard payload"}
+        eof {error "Unexpected EOF: $mode OSC 52 clipboard payload"}
+    }
+    expect_text {Copied to clipboard\. Open a fresh terminal tab and paste\.} "$mode confirmation"
+    send -- "\033"
+    expect_text {Select REPL type} "return to dialect menu"
+    send -- "\003"
+    expect_text {EXIT_CODE 130} "Ctrl-C exit"
+    expect eof
+    set status [wait]
+    if {[lindex $status 3] != 0} {error "$mode failed: $status"}
+    puts "PASS $mode"
+}

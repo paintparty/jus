@@ -2,6 +2,7 @@
   (:require [charm.program :as program]
             [charm.message :as msg]
             [charm.components.text-input :as text-input]
+            [charm.render.screen :as screen]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [babashka.fs :as fs]
@@ -12,7 +13,6 @@
             [jus.tui.generator :as generator]
             [jus.tui.menu :as menu]
             [jus.tui.repls :as repls]
-            [jus.tui.repl-installer :as installer]
             [jus.tui.style :as style :refer [error-prefix]]
             [jus.tui.tasks :as tasks])
   (:import (java.lang ProcessBuilder$Redirect)
@@ -646,20 +646,19 @@
 
 (defn- repl-install-items
   [runtime]
-  (let [{:keys [label installer guide]} (repls/option runtime)
-        command (str "source <(curl -fsSL https://in-1.cc) ")
-        args (if (= runtime :gloat) " --repl" "")
-        install-items [{:label (str "Install " label ", Temporary") :mode :temporary
-                        :desc "Installs via in-1 for current session"
-                        :command (str command "--temp " installer " && " installer args)
-                        :helper (str "This is a temp install using [in-1](https://in-1.cc), a tool for\n"
+  (let [{:keys [label guide]} (repls/option runtime)
+        install-items [{:label (str "Copy " label " temporary install + launch command")
+                        :mode :temporary
+                        :command (repls/install-snippet runtime :temporary)
+                        :helper (str "This will copy an install snippet to your clipboard.\n"
+                                     "This will be a temp install using in-1, a tool for\n"
                                      "installing things quickly and easily, with no prerequisites.")}
-                       {:label (str "Install " label ", Persistent") :mode :persistent
-                        :desc "Installs via in-1"
-                        :command (str command "--local " installer " PREFIX=\"$HOME/.local\" && " installer args)
-                        :helper (str "This is a local install using [in-1](https://in-1.cc), a tool for\n"
-                                     "installing things quickly and easily, with no prerequisites.\n"
-                                     "It will install " label " in `$HOME/.local/bin/" installer "`")}]
+                       {:label (str "Copy " label " persistent install + launch command")
+                        :mode :persistent
+                        :command (repls/install-snippet runtime :persistent)
+                        :helper (str "This will copy an install snippet to your clipboard.\n"
+                                     "This will be a local install using in-1, a tool for\n"
+                                     "installing things quickly and easily, with no prerequisites.")}]
         guide-and-cancel [{:label (str "View " label " Install Guide") :url guide
                            :desc (str "Official " label " installation info")
                            :helper guide}
@@ -673,75 +672,47 @@
   (-> state
       (assoc :step :repl-menu :menu-idx (or (:repl-menu-idx state) 0)
              :error nil :action nil)
-      (dissoc :repl-install :repl-executable)))
+      (dissoc :repl-install-copy-mode :repl-executable)))
 
-(defn- repl-install-tick-cmd
-  [operation]
-  (program/cmd (fn [] (Thread/sleep loading-spinner-frame-ms)
-                 {:type :repl-install-tick :operation operation})))
-
-(defn- begin-repl-install
-  [state mode]
-  (try
-    (let [operation (str (java.util.UUID/randomUUID))
-          handle (installer/start! {:runtime (:repl-id state) :mode mode})]
-      [(assoc state :step :repl-installing :error nil
-              :repl-install {:operation operation :handle handle :frame 0})
-       (program/batch
-        (program/cmd (fn []
-                       {:type :repl-install-complete :operation operation
-                        :result (try (installer/await! handle)
-                                     (catch Exception e {:status :failed :error (.getMessage e)}))}))
-        (repl-install-tick-cmd operation))])
-    (catch Exception e
-      [(assoc state :step :repl-error :menu-idx 0 :error (.getMessage e)) nil])))
+(defn- copy-to-clipboard-cmd
+  [mode text]
+  (program/cmd
+   (fn []
+     (print (screen/copy-to-clipboard text))
+     (flush)
+     {:type :repl-install-copy-complete :mode mode})))
 
 (defn- update-repl-install
   [state message]
-  (let [{:keys [operation handle cancel-action]} (:repl-install state)
-        ctrl-c? (msg/key-match? message "ctrl+c")
+  (let [ctrl-c? (msg/key-match? message "ctrl+c")
         escape? (msg/key-match? message :escape)]
     (cond
-      (= :repl-installing (:step state))
-      (cond
-        (or ctrl-c? escape?)
-        (do (installer/cancel! handle)
-            [(assoc-in state [:repl-install :cancel-action]
-                       (if (or ctrl-c? (= cancel-action :exit)) :exit :return)) nil])
-
-        (and (= operation (:operation message))
-             (= :repl-install-complete (:type message)))
-        (let [{:keys [status executable error diagnostics]} (:result message)]
-          (cond
-            (= cancel-action :exit)
-            [(assoc (return-to-repls state) :done? true :exit-code 130) program/quit-cmd]
-            (or cancel-action (= status :cancelled)) [(return-to-repls state) nil]
-            (= status :installed)
-            [(assoc state :repl-install nil :repl-executable executable :action :repl) program/quit-cmd]
-            :else
-            [(assoc state :step :repl-error :menu-idx 0 :repl-install nil
-                    :error (str error (when (seq diagnostics) (str "\n" diagnostics)))) nil]))
-
-        (and (= operation (:operation message)) (= :repl-install-tick (:type message)))
-        [(update-in state [:repl-install :frame] inc) (repl-install-tick-cmd operation)]
-        :else [state nil])
-
       ctrl-c? [(assoc state :exit-code 130 :done? true) program/quit-cmd]
       escape? [(return-to-repls state) nil]
-      (= :repl-error (:step state))
-      (if (msg/key-match? message "enter") [(return-to-repls state) nil] [state nil])
+      (= :repl-install-copy-complete (:type message))
+      (let [selected-mode (:mode (nth (repl-install-items (:repl-id state))
+                                      (:menu-idx state)))]
+        [(cond-> state
+           (= selected-mode (:mode message))
+           (assoc :repl-install-copy-mode (:mode message) :error nil)) nil])
       (msg/key-match? message "enter")
-      (let [{:keys [mode url]} (nth (repl-install-items (:repl-id state)) (:menu-idx state))]
-        (cond mode (begin-repl-install state mode)
-              url (if (open-url! url) [state nil]
-                      [(assoc state :step :repl-error :menu-idx 0
-                              :error (str "Unable to open " url ". Open it manually in your browser.")) nil])
-              :else [(return-to-repls state) nil]))
+      (let [{:keys [mode url command]}
+            (nth (repl-install-items (:repl-id state)) (:menu-idx state))]
+        (cond
+          mode [state (copy-to-clipboard-cmd mode command)]
+          url (if (open-url! url) [state nil]
+                  [(assoc state :error
+                          (str "Unable to open " url ". Open it manually in your browser.")) nil])
+          :else [(return-to-repls state) nil]))
       (or (msg/key-match? message :up) (msg/key-match? message "k"))
-      [(update state :menu-idx #(max 0 (dec %))) nil]
+      [(-> state
+           (update :menu-idx #(max 0 (dec %)))
+           (dissoc :repl-install-copy-mode :error)) nil]
       (or (msg/key-match? message :down) (msg/key-match? message "j"))
-      [(update state :menu-idx #(min (dec (count (repl-install-items (:repl-id state))))
-                                     (inc %))) nil]
+      [(-> state
+           (update :menu-idx #(min (dec (count (repl-install-items (:repl-id state))))
+                                   (inc %)))
+           (dissoc :repl-install-copy-mode :error)) nil]
       :else [state nil])))
 
 (defn update-fn
@@ -752,11 +723,8 @@
     (msg/window-size? msg)
     [(animation/resize-state state msg) nil]
 
-    (#{:repl-install-menu :repl-installing :repl-error} (:step state))
+    (= :repl-install-menu (:step state))
     (update-repl-install state msg)
-
-    (#{:repl-install-complete :repl-install-tick} (:type msg))
-    [state nil]
 
     ;; Opening inward confetti → header reveal → full main menu.
     (:opening-animation state)
@@ -964,8 +932,7 @@
                     [(assoc selected :repl-executable executable :action :repl) program/quit-cmd]
                     [(assoc selected :step :repl-install-menu :menu-idx 0) nil]))
                 (catch Exception e
-                  [(assoc state :step :repl-error :repl-menu-idx (:menu-idx state)
-                          :menu-idx 0 :error (.getMessage e)) nil]))
+                  [(assoc state :error (.getMessage e)) nil]))
               (if-let [missing (some #(when-not (executable-available? %) %) (:requires runtime))]
                 [(assoc state :error (repls/missing-executable-message missing)) nil]
                 [(assoc state :repl-id (:id runtime)
@@ -989,8 +956,8 @@
             (and url (open-url! url)) [state nil]
 
             :else
-            [(assoc state :error (str "Unable to open " url)
-                    ". Open it manually in your browser.") nil]))
+            [(assoc state :error
+                    (str "Unable to open " url ". Open it manually in your browser.")) nil]))
 
         [state nil])
 
@@ -1675,15 +1642,20 @@
                  (row (lbl "SPDX license:    ") (value (:license/id r)))]]
     (str/join "\n" (concat [top] rows [bot]))))
 
-(defn help-bar [_step]
+(defn help-bar [step]
   (str "\n\n  "
-       "Enter" (style/secondary ": next,  ")
+       "Enter" (style/secondary (if (= :repl-install-menu step) ": copy,  " ": next,  "))
        "↑↓" (style/secondary ": menus,  ")
        "Esc" (style/secondary ": back,  ")
        "Ctrl-C" (style/secondary ": quit")))
 
-(defn- helper-text [s]
-  (str/join "\n" (mapv style/secondary (str/split s #"\n"))))
+(defn- helper-text
+  ([s] (helper-text s :secondary))
+  ([s tone]
+   (let [render-line (case tone
+                       :normal style/default
+                       :secondary style/secondary)]
+     (str/join "\n" (mapv render-line (str/split s #"\n"))))))
 
 (def logo
   (style/accent-italic "Blah Project Wizard ★ ☆")
@@ -1737,7 +1709,6 @@
         height (:term-height state)
         content-width (- width 4)
         label (:label (repls/option (:repl-id state)))
-        step (:step state)
         indent-lines (fn [lines] (str/join "\n" (map #(str "  " %) lines)))
         header (str (main-menu-logo-prefix)
                     main-menu-logo-with-nav
@@ -1748,77 +1719,86 @@
                  header
                  (str "\n" (style/italic
                             (fit-repl-text (str "  ◒ jus ╱ " label) width))))
-        helper-slot (fn [lines]
+        helper-slot (fn [lines tone]
                       (str "  "
-                           (helper-text (str/join "\n  " lines))))
-        shared-footer (let [footer (help-bar step)]
+                           (helper-text (str/join "\n  " lines) tone)))
+        shared-footer (let [footer (help-bar :repl-install-menu)]
                         (if (<= (count (strip-ansi (last (str/split-lines footer)))) width)
                           footer
                           (str "\n\n  "
                                (style/secondary
                                 (fit-repl-text "Enter · ↑↓ · Esc · Ctrl-C" content-width)))))
-        section-gap (if (< height 18) "\n" "\n\n\n")]
-    (case step
-      :repl-installing
-      (let [{:keys [frame cancel-action]} (:repl-install state)
-            spinner (nth loading-spinner-frames
-                         (mod (or frame 0) (count loading-spinner-frames)))
-            message (if cancel-action "Cancelling installation…" (str "Installing " label "…"))]
-        (str header
-             section-gap
-             "  " spinner (fit-repl-text message (max 1 (- content-width 2)))
-             shared-footer
-             "\n"))
-      :repl-error
-      (let [lines (mapcat #(style/helper-lines % content-width)
-                          (str/split-lines (installer/clean-diagnostics (:error state))))
-            limit (max 1 (- height 9))
-            lines (if (> (count lines) limit)
-                    (concat [(fit-repl-text "… earlier output omitted …" content-width)]
-                            (take-last (max 0 (dec limit)) lines)) lines)]
-        (str header
-             section-gap
-             "  ! Error\n"
-             (indent-lines lines)
-             "\n"
-             (render-repl-rows [{:label "Return to previous REPL dialects menu"}] 0 width 1 false)
-             shared-footer
-             "\n"))
-      :repl-install-menu
-      (let [items (repl-install-items (:repl-id state))
-            selected (:menu-idx state)
-            selected-item (nth items selected)
-            heading (style/helper-lines (str error-prefix label " installation not found.") content-width)
-            unavailable? (not (repls/in-1-installation-supported? (:repl-id state)))
-            unavailable-note (when unavailable?
-                               (style/helper-lines (str error-prefix
-                                                        "Quick install option via in-1 not available for Intel Mac")
-                                                   content-width))
-            explanation (style/helper-lines (:helper selected-item) content-width)
-            helper (if-let [command (:command selected-item)]
-                     (concat ["This will run:"]
-                             (style/helper-lines command content-width)
-                             [""]
-                             explanation)
-                     explanation)
-            shell-lines (if (< height 18) 4 6)
-            helper (take (max 1 (min 8 (- height (count heading) (count unavailable-note) shell-lines 3))) helper)
-            box-budget (max 3 (- height (count heading) (count unavailable-note) (count helper) shell-lines))
-            capacity (max 1 (min (count items) (- box-budget 2)))
-            window (menu/visible-window items selected capacity)
-            overflow-row-count (count (filter pos? [(:hidden-above window)
-                                                    (:hidden-below window)]))
-            helper (take (max 0 (- (count helper) overflow-row-count)) helper)]
-        (str header
-             section-gap
-             (indent-lines heading)
-             (when unavailable? (str "\n" (indent-lines unavailable-note)))
-             "\n"
-             (render-repl-rows items selected width capacity false)
-             "\n"
-             (helper-slot helper)
-             shared-footer
-             "\n")))))
+        section-gap (if (< height 18) "\n" "\n\n\n")
+        items (repl-install-items (:repl-id state))
+        selected (:menu-idx state)
+        selected-item (nth items selected)
+        heading (style/helper-lines (str error-prefix label " installation not found.") content-width)
+        unavailable? (not (repls/in-1-installation-supported? (:repl-id state)))
+        unavailable-note (when unavailable?
+                           (style/helper-lines (str error-prefix
+                                                    "Quick install option via in-1 not available for Intel Mac")
+                                               content-width))
+        copied? (and (:mode selected-item)
+                     (= (:mode selected-item) (:repl-install-copy-mode state)))
+        command-lines (when copied?
+                        (style/helper-lines (:command selected-item) content-width))
+        helper-lines (cond
+                       (:error state)
+                       (style/helper-lines (:error state) content-width)
+
+                       copied?
+                       (concat
+                        (style/helper-lines
+                         "✓ Copied to clipboard. Open a fresh terminal tab and paste."
+                         content-width)
+                        [""]
+                        (style/helper-lines
+                         "If clipboard access is blocked, copy this manually:"
+                         content-width)
+                        command-lines)
+
+                       :else
+                       (style/helper-lines (:helper selected-item) content-width))
+        shell-lines (if (< height 18) 4 6)
+        helper-limit (max 1 (min 8 (- height (count heading) (count unavailable-note) shell-lines 3)))
+        command-fits? (and copied? (<= (count command-lines) helper-limit))
+        helper (cond
+                 (not copied?) (take helper-limit helper-lines)
+                 command-fits? (take-last helper-limit helper-lines)
+                 :else (take helper-limit
+                             (style/helper-lines
+                              "Enlarge terminal to view the manual command."
+                              content-width)))
+        box-budget (max 3 (- height (count heading) (count unavailable-note) (count helper) shell-lines))
+        capacity (max 1 (min (count items) (- box-budget 2)))
+        window (menu/visible-window items selected capacity)
+        overflow-row-count (count (filter pos? [(:hidden-above window)
+                                                (:hidden-below window)]))
+        final-helper-limit (max 0 (- (count helper) overflow-row-count))
+        helper ((if command-fits? take-last take) final-helper-limit helper)
+        helper-tone (if (or (:mode selected-item) (:error state)) :normal :secondary)
+        compact-copy? (and copied? (< height 18))
+        complete-compact-copy? (and compact-copy? (>= width 32) (>= height 16))]
+    (if compact-copy?
+      (str header
+           "\n"
+           (render-repl-rows [selected-item] 0 width 1 false)
+           "\n"
+           (if complete-compact-copy?
+             (helper-slot helper-lines :normal)
+             "  Enlarge terminal")
+           "\n  " (style/secondary "Esc · Ctrl-C")
+           "\n")
+      (str header
+           section-gap
+           (indent-lines heading)
+           (when unavailable? (str "\n" (indent-lines unavailable-note)))
+           "\n"
+           (render-repl-rows items selected width capacity false)
+           "\n"
+           (helper-slot helper helper-tone)
+           shared-footer
+           "\n"))))
 
 (defn render-menu-screen
   "Render one of the top-level menu screens."
@@ -1920,7 +1900,7 @@
     (:post-confetti-blank-screen-pause? state)
     ""
 
-    (#{:repl-install-menu :repl-installing :repl-error} (:step state))
+    (= :repl-install-menu (:step state))
     (render-repl-install-screen state)
 
     (= :about (:step state))

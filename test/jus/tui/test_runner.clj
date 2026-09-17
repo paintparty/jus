@@ -9,8 +9,7 @@
                  'jus.tui.style-test
                  'jus.tui.tasks-test
                  'repl-handoff.launch-test]
-   :integration ['jus.tui.repl-installer-test
-                 'jus.tui.config-test
+   :integration ['jus.tui.config-test
                  'jus.tui.generator-test]})
 
 (defn- namespaces-for

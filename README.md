@@ -82,30 +82,32 @@ Early days.
 
 On Linux and macOS, the REPL menu also includes Glojure, Gloat, Gobb, Hy,
 Janet, Joker, and Phel. Jolt, let-go, and these seven dialects can be installed
-from the menu using [in-1](https://in-1.cc/install/). Installation requires
-Bash, Git, curl, and GNU make on `PATH`; the installer obtains the dialect's
-host runtime. Available binaries depend on upstream platform support.
+using snippets provided by the menu and [in-1](https://in-1.cc/install/).
+Installation requires Bash, Git, curl, and GNU make on `PATH`; in-1 obtains the
+dialect's host runtime. Available binaries depend on upstream platform support.
 
-When a dialect is missing, choose Temporary or Persistent. Temporary installs
-use `${TMPDIR:-/tmp}/in-1`; persistent installs use `$HOME/.local`. Jus searches
-`PATH`, then `$HOME/.local/bin`, then the temporary prefix's `bin` directory.
-It uses in-1's current default versions and does not update an existing dialect.
+When a dialect is missing, choose the temporary or persistent copy action. Jus
+copies a complete Bash-wrapped install-and-launch snippet using OSC 52 and also
+shows it for manual copying when terminal clipboard access is blocked. Open a
+fresh terminal tab, paste the snippet, and in-1 will install and immediately
+launch the selected REPL. Temporary installs use `${TMPDIR:-/tmp}/in-1`;
+persistent installs use `$HOME/.local`.
 
-Installation runs with a spinner and opens the REPL automatically on success.
-Escape cancels and returns to the dialect menu; Ctrl-C cancels and exits jus.
-Failures before handoff show diagnostics and a return-to-menu action. Once the
-REPL starts, its own terminal behavior applies. Temporary installations remain
-until temporary storage is cleaned; jus does not remove shared in-1 files or
-edit shell startup files.
+Jus does not execute or supervise in-1, so installation output and failures stay
+in the fresh terminal tab. The original jus screen remains open; Escape returns
+to the dialect menu and Ctrl-C exits. Jus searches `PATH`, then
+`$HOME/.local/bin`, then the temporary prefix's `bin` directory on later
+selections. Temporary installations remain until temporary storage is cleaned;
+jus does not remove shared in-1 files or edit shell startup files.
 
 The installation menu includes official dialect guides and terminal hyperlinks
 in helper text. `NO_COLOR` or `TERM=dumb` disables helper hyperlink escapes.
 Windows retains its existing six REPL choices; in-1 integration on Windows/WSL
 is deferred.
 
-For deterministic installer/menu terminal checks, run
-`scripts/repl-install-smoke.exp` from the repository root. It uses fake downloads
-and isolated temporary installation directories, without network access.
+For deterministic clipboard/menu terminal checks, run
+`scripts/repl-install-handoff-smoke.exp` from the repository root. It verifies
+both OSC 52 payloads and the return path without network access.
 
 ## Installation
 

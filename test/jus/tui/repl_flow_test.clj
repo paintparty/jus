@@ -1,11 +1,11 @@
 (ns jus.tui.repl-flow-test
   (:require [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]]
+            [clojure.test :refer [deftest is]]
             [charm.message :as msg]
             [charm.program :as program]
+            [charm.render.screen :as screen]
             [jus.tui.core :as core]
             [jus.tui.repls :as repls]
-            [jus.tui.repl-installer :as installer]
             [jus.tui.style :as style]))
 
 (defn with-extended-platform [test-fn]
@@ -31,6 +31,12 @@
   (with-redefs [repls/discover (constantly nil)]
     (first (core/update-fn (selected) (msg/key-press :enter)))))
 
+(defn clean-screen [text]
+  (-> text
+      core/strip-ansi
+      (str/replace #"\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)" "")
+      (str/replace #"[\p{Cntrl}&&[^\n\t]]" "")))
+
 (deftest missing-dialect-offers-installation-and-restores-selection
   (let [state (missing-menu)]
     (is (= :repl-install-menu (:step state)))
@@ -41,43 +47,38 @@
         (is (= 6 (:menu-idx back)))
         (is (nil? command))))))
 
-(deftest installation-menu-uses-the-shared-app-shell
+(deftest missing-runtime-menu-explains-the-temporary-copy-action
   (with-redefs [style/hyperlinks-enabled? (constantly true)]
     (let [screen (core/view (assoc (missing-menu) :term-width 80 :term-height 24))
-          plain (installer/clean-diagnostics screen)]
+          plain (clean-screen screen)
+          first-line "This will copy an install snippet to your clipboard."]
       (is (str/includes? plain
                          (str style/logo
                               " jus ╱ Launch Interactive REPL ╱ Glojure")))
       (is (str/includes? plain
-                         (str "  This will run:\n"
-                              "  source <(curl -fsSL https://in-1.cc) --temp glj && glj\n"
-                              "  \n"
-                              "  This is a temp install using in-1, a tool for\n"
+                         (str "  " first-line "\n"
+                              "  This will be a temp install using in-1, a tool for\n"
                               "  installing things quickly and easily, with no prerequisites.")))
       (is (str/includes? plain
-                         "Install Glojure, Temporary   Installs via in-1 for current session"))
+                         "Copy Glojure temporary install + launch command"))
       (is (str/includes? plain
-                         "Install Glojure, Persistent  Installs via in-1"))
+                         "Copy Glojure persistent install + launch command"))
       (is (not (str/includes? plain "Instant Dialect Commands")))
-      (is (str/includes? screen
-                         "\u001b]8;;https://in-1.cc\u001b\\in-1\u001b]8;;\u001b\\"))
+      (is (not (str/includes? screen (style/secondary first-line))))
       (is (str/includes? plain
-                         "Enter: next,  ↑↓: menus,  Esc: back,  Ctrl-C: quit")))))
+                         "Enter: copy,  ↑↓: menus,  Esc: back,  Ctrl-C: quit")))))
 
-(deftest installation-helper-copy-is-preserved
+(deftest persistent-copy-action-has-local-install-helper
   (let [screen-for (fn [index]
-                     (installer/clean-diagnostics
+                     (clean-screen
                       (core/view (assoc (missing-menu)
                                         :term-width 80 :term-height 24 :menu-idx index))))]
     (is (str/includes?
          (screen-for 1)
-         (str "  This will run:\n"
-              "  source <(curl -fsSL https://in-1.cc) --local glj PREFIX=\"$HOME/.local\" &&\n"
-              "  glj\n"
-              "  \n"
-              "  This is a local install using in-1, a tool for\n"
-              "  installing things quickly and easily, with no prerequisites.\n"
-              "  It will install Glojure in $HOME/.local/bin/glj")))
+         (str "  This will copy an install snippet to your clipboard.\n"
+              "  This will be a local install using in-1, a tool for\n"
+              "  installing things quickly and easily, with no prerequisites.")))
+    (is (not (str/includes? (screen-for 1) "bash -c")))
     (is (str/includes? (screen-for 2)
                        "  https://github.com/glojurelang/glojure#prerequisites"))))
 
@@ -85,7 +86,7 @@
   (with-redefs [style/intel-mac? true]
     (let [state (assoc (missing-menu)
                        :repl-id :janet :term-width 100 :term-height 24 :menu-idx 0)
-          screen (installer/clean-diagnostics (core/view state))]
+          screen (clean-screen (core/view state))]
       (is (str/includes? screen (str style/error-prefix "Janet installation not found.")))
       (is (str/includes? screen (str style/error-prefix
                                      "Quick install option via in-1 not available for Intel Mac")))
@@ -103,40 +104,40 @@
       (is (= "/some path/bin/glj" (:repl-executable state)))
       (is (= program/quit-cmd command)))))
 
-(deftest completion-and-cancellation-have-distinct-outcomes
-  (with-redefs [installer/start! (constantly :fake-handle)
-                installer/cancel! (constantly nil)]
-    (let [[state _] (core/update-fn (missing-menu) (msg/key-press :enter))
-          operation (get-in state [:repl-install :operation])
-          complete {:type :repl-install-complete :operation operation
-                    :result {:status :installed :executable "/tmp/in-1/bin/glj"}}]
-      (is (= :repl-installing (:step state)))
-      (is (= state (first (core/update-fn state (assoc complete :operation "stale"))))))
-    (let [[state _] (core/update-fn (missing-menu) (msg/key-press :enter))
-          operation (get-in state [:repl-install :operation])
-          complete {:type :repl-install-complete :operation operation
-                    :result {:status :installed :executable "/tmp/in-1/bin/glj"}}]
-      (testing "success launches automatically"
-        (let [[launched command] (core/update-fn state complete)]
-          (is (= :repl (:action launched)))
-          (is (= program/quit-cmd command))))
-      (testing "Escape waits for cleanup, then returns even if success raced cancellation"
-        (let [[cancelling _] (core/update-fn state (msg/key-press :escape))
-              [back command] (core/update-fn cancelling complete)]
-          (is (= :repl-installing (:step cancelling)))
-          (is (= :repl-menu (:step back)))
-          (is (= 6 (:menu-idx back)))
-          (is (nil? command))))
-      (testing "Ctrl-C waits for cleanup, then exits"
-        (let [[cancelling _] (core/update-fn state (msg/key-press "c" :ctrl true))
-              [back command] (core/update-fn cancelling complete)]
-          (is (= 130 (:exit-code back)))
-          (is (= program/quit-cmd command))))
-      (testing "failure shows recovery menu"
-        (let [[failed _] (core/update-fn state (assoc complete :result {:status :failed :error "offline"}))]
-          (is (= :repl-error (:step failed)))
-          (is (str/includes? (core/view failed) "offline"))
-          (is (= :repl-menu (:step (first (core/update-fn failed (msg/key-press :enter)))))))))))
+(deftest copy-actions-write-the-clipboard-and-stay-on-the-menu
+  (doseq [[index mode snippet]
+          [[0 :temporary "bash -c 'source <(curl -fsSL https://in-1.cc) --temp glj && exec glj'"]
+           [1 :persistent (str "bash -c 'source <(curl -fsSL https://in-1.cc) --local glj "
+                               "PREFIX=\"$HOME/.local\" && exec glj'")]]]
+    (let [[copying command] (core/update-fn (assoc (missing-menu) :menu-idx index)
+                                            (msg/key-press :enter))
+          completion (atom nil)
+          output (with-out-str (reset! completion ((:fn command))))
+          [state next-command] (core/update-fn copying @completion)]
+      (is (= (screen/copy-to-clipboard snippet) output))
+      (is (= :repl-install-menu (:step state)))
+      (is (= index (:menu-idx state)))
+      (is (= mode (:repl-install-copy-mode state)))
+      (is (nil? next-command))))
+  (let [[copying command] (core/update-fn (missing-menu) (msg/key-press :enter))
+        completion (atom nil)
+        _ (with-out-str (reset! completion ((:fn command))))
+        state (first (core/update-fn copying @completion))
+        snippet "bash -c 'source <(curl -fsSL https://in-1.cc) --temp glj && exec glj'"
+        screen (core/view (assoc state :term-width 80 :term-height 24))
+        plain (clean-screen screen)
+        confirmation "✓ Copied to clipboard. Open a fresh terminal tab and paste."]
+    (is (str/includes? plain
+                       (str "  " confirmation "\n"
+                            "  \n"
+                            "  If clipboard access is blocked, copy this manually:\n"
+                            "  " snippet)))
+    (is (not (str/includes? screen (style/secondary confirmation))))
+    (let [next-state (first (core/update-fn state (msg/key-press :down)))]
+      (is (nil? (:repl-install-copy-mode next-state)))
+      (is (str/includes? (clean-screen (core/view (assoc next-state
+                                                         :term-width 80 :term-height 24)))
+                         "This will be a local install using in-1")))))
 
 (deftest links-open-and-failures-have-recovery
   (let [state (assoc (missing-menu) :menu-idx 2)
@@ -145,14 +146,16 @@
       (is (= state (first (core/update-fn state (msg/key-press :enter)))))
       (is (= (:guide (repls/option :glojure)) @opened)))
     (with-redefs [core/open-url! (constantly false)]
-      (is (= :repl-error (:step (first (core/update-fn state (msg/key-press :enter)))))))))
+      (let [failed (first (core/update-fn state (msg/key-press :enter)))]
+        (is (= :repl-install-menu (:step failed)))
+        (is (str/includes? (clean-screen (core/view failed)) "Unable to open"))))))
 
 (deftest rendering-stays-within-the-viewport
   (with-redefs [style/hyperlinks-enabled? (constantly true)]
     (doseq [width [32 80 120] height [16 24] index (range 4)]
       (let [state (assoc (missing-menu) :term-width width :term-height height :menu-idx index)
             screen (core/view state)
-            plain (installer/clean-diagnostics screen)]
+            plain (clean-screen screen)]
         (is (every? #(<= (count %) width) (str/split-lines plain)) (str width " " index))
         (is (<= (count (str/split-lines plain)) height))
         (when (= index 2)
@@ -166,29 +169,27 @@
     (is (str/includes? (str/join (style/helper-lines "Use [in-1](https://in-1.cc) here" 20))
                        "\u001b]8;;https://in-1.cc")))
   (with-redefs [style/hyperlinks-enabled? (constantly false)]
-    (is (= ["Use in-1 here"] (style/helper-lines "Use [in-1](https://in-1.cc) here" 20)))))
+    (is (= ["Use in-1 here"] (style/helper-lines "Use [in-1](https://in-1.cc) here" 20)))
+    (let [url (:guide (repls/option :glojure))
+          guide (core/view (assoc (missing-menu) :term-width 120 :term-height 24 :menu-idx 2))]
+      (is (str/includes? guide (style/secondary url))))))
 
-(deftest progress-and-errors-fit-small-terminals
-  (doseq [step [:repl-installing :repl-error :repl-install-menu]
-          width [20 32] height [12 16]]
-    (let [state (assoc (missing-menu) :step step :term-width width :term-height height
-                       :repl-install {:frame 0} :error (apply str (repeat 40 "error details\n")))
-          lines (str/split-lines (installer/clean-diagnostics (core/view state)))]
-      (is (every? #(<= (count %) width) lines) (str step " " width))
-      (is (<= (count lines) height) (str step " " width "x" height)))))
-
-(deftest installation-spinner-keeps-its-message-column-stable
-  (let [render-frame (fn [frame]
-                       (-> (missing-menu)
-                           (assoc :step :repl-installing
-                                  :term-width 80 :term-height 24
-                                  :repl-install {:frame frame})
-                           core/view
-                           core/strip-ansi))
-        visible-frame (render-frame 0)
-        blank-frame (render-frame 2)]
-    (is (= (.indexOf visible-frame "Installing Glojure…")
-           (.indexOf blank-frame "Installing Glojure…")))
-    (is (str/includes? visible-frame
-                       "Enter: next,  ↑↓: menus,  Esc: back,  Ctrl-C: quit"))
-    (is (not (str/includes? visible-frame "Escape cancels · Ctrl-C exits")))))
+(deftest copy-menu-fits-small-terminals
+  (doseq [width [20 32] height [12 16]]
+    (let [state (assoc (missing-menu) :term-width width :term-height height)
+          lines (str/split-lines (clean-screen (core/view state)))]
+      (is (every? #(<= (count %) width) lines) (str width))
+      (is (<= (count lines) height) (str width "x" height))))
+  (doseq [[width height] [[20 12] [32 16]]]
+    (let [state (assoc (missing-menu)
+                       :repl-install-copy-mode :temporary
+                       :term-width width :term-height height)
+          rendered (clean-screen (core/view state))
+          lines (str/split-lines rendered)]
+      (is (every? #(<= (count %) width) lines) (str "copied " width))
+      (is (<= (count lines) height) (str "copied " width "x" height))
+      (if (= width 32)
+        (do (is (str/includes? rendered "✓ Copied to clipboard. Open"))
+            (is (str/includes? rendered "a fresh terminal tab and\n  paste."))
+            (is (str/includes? rendered "exec glj'") "complete manual fallback"))
+        (is (str/includes? rendered "\n  Enlarge terminal\n") "explicit size fallback")))))
