@@ -312,6 +312,76 @@ proc assert_jus_session_resume {} {
   puts "PASS jus session resume: REPL Ctrl-C stays native and Ctrl-D returns to the selected REPL picker"
 }
 
+proc assert_jus_session_resume_after_ctrl_c {} {
+  global cache_dir repo_root temp_root
+  set transcript_path [file join $temp_root "jus-session-ctrl-c-resume.log"]
+  log_file -a -noappend $transcript_path
+  spawn -noecho sh -c {stty rows 40 columns 120; cd "$1"; shift; exec "$@"} \
+    sh $repo_root env "XDG_CACHE_HOME=$cache_dir" \
+    "XDG_CONFIG_HOME=[file join $temp_root ctrl-c-config]" bb jus
+  set channel $spawn_id
+
+  expect {
+    -i $channel
+    -re {New Project Wizard} {}
+    timeout {fail "jus did not reach its main menu for the Ctrl-C resume check"}
+    eof {fail "jus exited before the Ctrl-C resume check"}
+  }
+  send -i $channel "\033\[B\r"
+  expect {
+    -i $channel
+    -re {Select REPL type} {}
+    timeout {fail "jus did not open its REPL picker for the Ctrl-C resume check"}
+    eof {fail "jus exited before its REPL picker for the Ctrl-C resume check"}
+  }
+  send -i $channel "\r"
+  expect {
+    -i $channel
+    -re {user=>} {}
+    timeout {fail "Clojure did not reach its prompt from jus"}
+    eof {fail "Clojure exited before its prompt from jus"}
+  }
+  send -i $channel "\003"
+  expect {
+    -i $channel
+    -re {Select REPL type} {}
+    timeout {fail "Ctrl-C REPL exit did not return to the jus REPL picker"}
+    eof {fail "jus exited after the REPL handled Ctrl-C"}
+  }
+  send -i $channel "\r"
+  expect {
+    -i $channel
+    -re {Starting Clojure\.\.\.} {}
+    timeout {fail "Ctrl-C-resumed picker did not preserve the Clojure selection"}
+    eof {fail "jus exited before relaunching Clojure after Ctrl-C"}
+  }
+  expect {
+    -i $channel
+    -re {user=>} {}
+    timeout {fail "reselected Clojure did not reach its prompt"}
+    eof {fail "reselected Clojure exited before its prompt"}
+  }
+  send -i $channel "\003"
+  expect {
+    -i $channel
+    -re {Select REPL type} {}
+    timeout {fail "second Clojure Ctrl-C did not return to jus"}
+    eof {fail "jus exited after the second Clojure Ctrl-C"}
+  }
+  send -i $channel "\003"
+  expect {
+    -i $channel
+    eof {}
+    timeout {fail "Ctrl-C-resumed jus session did not exit from the picker"}
+  }
+  set status [wait_status $channel]
+  log_file
+  if {$status != 130} {
+    fail "Ctrl-C-resumed jus session exited $status instead of 130"
+  }
+  puts "PASS jus Ctrl-C resume: terminating Clojure with Ctrl-C returns to its selected REPL picker"
+}
+
 proc wait_status {channel} {
   set result [wait -i $channel]
   if {[info exists ::env(SPIKE_VERBOSE)]} {
@@ -568,6 +638,7 @@ assert_managed_cljs_cache $before_cljs_tree
 puts "PASS ClojureScript cache: all compiler output stayed under XDG_CACHE_HOME/jus/cljs-repl/1.12.145/<cwd-sha256>"
 puts "PASS terminal handoff: no alternate-screen residue, launch cursor controls, waiting Babashka Rebel parent, or Rebel thread loop"
 assert_jus_session_resume
+assert_jus_session_resume_after_ctrl_c
 puts "PASS all four runtimes"
 
 file delete -force $temp_root

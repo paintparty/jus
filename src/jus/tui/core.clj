@@ -2299,7 +2299,7 @@
           (let [exit-code (if-let [executable (:repl-executable final-state)]
                             (run-repl! (:repl-id final-state) executable)
                             (run-repl! (:repl-id final-state)))]
-            (if (zero? exit-code)
+            (if (#{0 130} exit-code)
               (recur (repl-menu-state-after-exit final-state) false)
               exit-code))
 

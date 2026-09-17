@@ -1682,6 +1682,28 @@
          (is (= 2 (:menu-idx (second @initial-states))))
          (is (nil? (:action (second @initial-states))))))))
 
+(deftest repl-user-interrupt-returns-to-the-selected-repl-menu
+  (let [initial-states (atom [])
+        final-states (atom [{:action :repl :repl-id :clojure
+                             :repl-menu-idx 0}
+                            {:done? true :exit-code 0}])]
+    (with-redefs-fn {#'core/clear-console-on-launch? false
+                     #'animation/initialize-main-menu (fn [state] [state nil])
+                     #'program/run (fn [{:keys [init]}]
+                                     (swap! initial-states conj (first (init)))
+                                     (let [state (first @final-states)]
+                                       (swap! final-states subvec 1)
+                                       state))
+                     #'config/global-config-path (constantly "/tmp/jus-config.edn")
+                     #'config/load-config-result (constantly {:config {}
+                                                              :exists? false})
+                     #'core/run-repl! (constantly 130)}
+      #(do
+         (is (= 0 (core/run-cli!)))
+         (is (= 2 (count @initial-states)))
+         (is (= :repl-menu (:step (second @initial-states))))
+         (is (zero? (:menu-idx (second @initial-states))))))))
+
 (deftest cli-help-prints-usage-to-stdout
   (let [err    (java.io.StringWriter.)
         result (binding [*err* err]
