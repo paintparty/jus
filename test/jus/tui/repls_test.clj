@@ -6,9 +6,11 @@
             [jus.tui.repls :as repls]))
 
 (deftest options-have-the-planned-order-and-default
-  (is (= [:clojure :rebel :babashka :clojurescript :jolt :let-go
-          :glojure :gloat :gobb :hy :janet :joker :phel]
+  (is (= [:clojure :rebel :cljr :babashka :clojurescript :jolt :jank]
          (mapv :id repls/options)))
+  (is (= [:basilisp :let-go :cljgo :fennel :glojure :gloat :gobb :hy
+          :janet :joker :phel :squint :ys]
+         (mapv :id repls/more-options)))
   (is (= :clojure (:id (first repls/options))))
   (is (= ["clojure"] (:requires (repls/option :clojure))))
   (is (= ["clojure"] (:requires (repls/option :rebel))))
@@ -22,7 +24,14 @@
     (is (= ["clojure"] (repls/command :clojure "/tmp/project")))
     (is (= ["bb" "repl"] (repls/command :babashka "/tmp/project")))
     (is (= ["lg"] (repls/command :let-go "/tmp/project")))
-    (is (= ["jolt"] (repls/command :jolt "/tmp/project"))))
+    (is (= ["jolt"] (repls/command :jolt "/tmp/project")))
+    (is (= ["basilisp" "repl"] (repls/command :basilisp "/tmp/project")))
+    (is (= ["cljr"] (repls/command :cljr "/tmp/project")))
+    (is (= ["cljgo" "repl"] (repls/command :cljgo "/tmp/project")))
+    (is (= ["fennel"] (repls/command :fennel "/tmp/project")))
+    (is (= ["jank" "repl"] (repls/command :jank "/tmp/project")))
+    (is (= ["squint" "repl"] (repls/command :squint "/tmp/project")))
+    (is (= ["ys" "--help"] (repls/command :ys "/tmp/project"))))
   (testing "Rebel retains its pin, native-access option, and neutral theme"
     (let [[_clojure native-access _sdeps deps-edn
            main-flag main-opt module color-theme-flag color-theme]
@@ -78,8 +87,8 @@
 
 (deftest extended-dialects-are-platform-filtered
   (let [options (repls/available-options "Mac OS X")]
-    (is (= 12 (count options)))
-    (is (not (some #(= :phel (:id %)) options)))))
+    (is (= 20 (count options)))
+    (is (some #(= :phel (:id %)) options))))
 
 (deftest in-1-installations-respect-intel-mac-build-targets
   (with-redefs [style/intel-mac? true]
@@ -87,26 +96,25 @@
     (is (false? (repls/in-1-installation-supported? :janet)))
     (is (true? (repls/in-1-installation-supported? :phel))))
   (with-redefs [style/intel-mac? false]
-    (is (true? (repls/in-1-installation-supported? :janet)))))
+    (is (true? (repls/in-1-installation-supported? :janet)))
+    (is (false? (repls/in-1-installation-supported? :jank)))))
 
-(deftest install-snippets-install-and-launch-in-a-fresh-bash-session
-  (is (= "bash -c 'source <(curl -fsSL https://in-1.cc) --temp glj && exec glj'"
+(deftest install-snippets-use-the-installed-in-1-command
+  (is (= "in-1 --temp glj && glj"
          (repls/install-snippet :glojure :temporary)))
-  (is (= (str "bash -c 'source <(curl -fsSL https://in-1.cc) --local glj "
-              "PREFIX=\"$HOME/.local\" && exec glj'")
-         (repls/install-snippet :glojure :persistent)))
-  (is (= (str "bash -c 'source <(curl -fsSL https://in-1.cc) --temp gloat "
-              "&& exec gloat --repl'")
+  (is (= "in-1 --local glj && glj"
+         (repls/install-snippet :glojure :local)))
+  (is (= "in-1 --temp gloat && gloat --repl"
          (repls/install-snippet :gloat :temporary))))
 
-(deftest discovery-prefers-path-then-persistent-then-temporary
+(deftest discovery-prefers-path-then-local-then-temporary
   (let [root (fs/create-temp-dir {:prefix "jus repl discovery "})
         bin (fs/create-dirs (fs/path root "tools"))
         env {:home (str (fs/create-dirs (fs/path root "home")))
              :tmp (str (fs/create-dirs (fs/path root "tmp")))
              :path (str bin)}
         temporary (io/file (repls/install-prefix :temporary env) "bin/glj")
-        persistent (io/file (repls/install-prefix :persistent env) "bin/glj")
+        local (io/file (repls/install-prefix :local env) "bin/glj")
         on-path (io/file (str bin) "glj")
         make-executable! (fn [file]
                            (io/make-parents file)
@@ -115,18 +123,18 @@
                            file)]
     (try
       (is (nil? (repls/discover :glojure env)))
-      (doseq [file [temporary persistent on-path]]
+      (doseq [file [temporary local on-path]]
         (make-executable! file)
         (is (= (str file) (repls/discover :glojure env))))
       (.setExecutable on-path false)
-      (is (= (str persistent) (repls/discover :glojure env)))
+      (is (= (str local) (repls/discover :glojure env)))
       (finally (fs/delete-tree root)))))
 
 (deftest platform-and-native-command-contracts
-  (is (= 12 (count (repls/available-options "Linux")))))
+  (is (= 20 (count (repls/available-options "Linux")))))
 
 (deftest windows-keeps-the-original-menu
-  (is (= [:clojure :rebel :babashka :clojurescript :jolt :let-go]
+  (is (= [:clojure :rebel :cljr :babashka :clojurescript :jolt :jank]
          (mapv :id (repls/available-options "Windows 11"))))
   (is (= ["gloat" "--repl"] (repls/command :gloat ".")))
   (is (= "Python" (:description (repls/option :hy)))))

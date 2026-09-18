@@ -13,8 +13,7 @@
             [jus.tui.generator :as generator]
             [jus.tui.menu :as menu]
             [jus.tui.repls :as repls]
-            [jus.tui.style :as style :refer [error-prefix]]
-            [jus.tui.tasks :as tasks])
+            [jus.tui.style :as style :refer [error-prefix]])
   (:import (java.lang ProcessBuilder$Redirect)
            (java.nio.file Files LinkOption)))
 
@@ -25,6 +24,8 @@
 (def version
   "The current jus release version."
   "0.2.0")
+
+(def bbtl-url "https://github.com/paintparty/bbtl")
 
 (def open-in-browser-icon (if @style/windows-10? ">" "↗"))
 
@@ -238,7 +239,7 @@
   (boolean (some #{step} [:main-menu :repl-menu :resources])))
 
 (def about-content
-  "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, run tasks, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [rewrite-clj](https://github.com/clj-commons/rewrite-clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to deps-new.\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty")
+  "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to deps-new.\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty")
 
 (defn- resource-items [state]
   (or (peek (:resource-stack state)) data/community-resources))
@@ -421,16 +422,16 @@
       (str/replace "." "/")))
 
 (defn source-layout-items
-  "Return source namespace choices with previews for the current identity."
+  "Return source namespace choices with path descriptions for the current identity."
   [state]
   (let [project-name (text-input/value (:project-name state))
         group-name   (selected-group-name state)
         rooted-ns    (str project-name ".core")
         default-ns   (str (or group-name project-name) "." project-name)]
-    [{:label   "Project-rooted (Recommended)"
-      :preview (str "src/" (namespace-path rooted-ns) ".clj")}
-     {:label   "Group-derived"
-      :preview (str "src/" (namespace-path default-ns) ".clj")}]))
+    [{:label "Project-rooted (Recommended)"
+      :desc  (str "src/" (namespace-path rooted-ns) ".clj")}
+     {:label "Group-derived"
+      :desc  (str "src/" (namespace-path default-ns) ".clj")}]))
 
 (defn output-path
   "Absolute path where the project will be created."
@@ -644,21 +645,49 @@
 ;;     UU:::::::::UU    P::::::::P          D::::::::::::DDD A:::::A                 A:::::A T:::::::::T      E::::::::::::::::::::E
 ;;       UUUUUUUUU      PPPPPPPPPP          DDDDDDDDDDDDD   AAAAAAA                   AAAAAAATTTTTTTTTTT      EEEEEEEEEEEEEEEEEEEEEE
 
+(defn- repl-install-copy-confirmation-lines
+  [label mode command width]
+  (let [mode-label (case mode :temporary "temp" :local "local")
+        confirmation (style/helper-lines
+                      (str "✓ Copied to clipboard: " label " in-1 " mode-label
+                           " install command")
+                      width)]
+    (concat
+     (map-indexed (fn [index line]
+                    (if (zero? index)
+                      (str/replace-first line "✓ Copied to clipboard"
+                                         (style/primary "✓ Copied to clipboard"))
+                      line))
+                  confirmation)
+     [""]
+     (style/helper-lines "Open a fresh terminal tab and paste." width)
+     [""]
+     (style/helper-lines "If clipboard access is blocked, copy this manually:" width)
+     [command]
+     [""]
+     (style/helper-lines "Install in-1 for Bash/Zsh:" width)
+     ["source <(curl -sL in-1.cc) in-1"]
+     [""]
+     (style/helper-lines "Install in-1 for Fish:" width)
+     ["curl -sL in-1.cc | source - in-1"])))
+
 (defn- repl-install-items
   [runtime]
   (let [{:keys [label guide]} (repls/option runtime)
-        install-items [{:label (str "Copy " label " temporary install + launch command")
+        install-items [{:label (str label " temporary install & launch")
+                        :desc "Copy in-1 command to clipboard"
                         :mode :temporary
                         :command (repls/install-snippet runtime :temporary)
-                        :helper (str "This will copy an install snippet to your clipboard.\n"
-                                     "This will be a temp install using in-1, a tool for\n"
-                                     "installing things quickly and easily, with no prerequisites.")}
-                       {:label (str "Copy " label " persistent install + launch command")
-                        :mode :persistent
-                        :command (repls/install-snippet runtime :persistent)
-                        :helper (str "This will copy an install snippet to your clipboard.\n"
-                                     "This will be a local install using in-1, a tool for\n"
-                                     "installing things quickly and easily, with no prerequisites.")}]
+                        :helper (str "This will copy an install snippet to your clipboard.\n\n"
+                                     "This will be a temp install using in-1, a tool for installing\n"
+                                     "things quickly and easily, with no prerequisites.")}
+                       {:label (str label " local install & launch")
+                        :desc "Copy in-1 command to clipboard"
+                        :mode :local
+                        :command (repls/install-snippet runtime :local)
+                        :helper (str "This will copy an install snippet to your clipboard.\n\n"
+                                     "This will be a local install using in-1, a tool for installing\n"
+                                     "things quickly and easily, with no prerequisites.")}]
         guide-and-cancel [{:label (str "View " label " Install Guide") :url guide
                            :desc (str "Official " label " installation info")
                            :helper guide}
@@ -924,7 +953,9 @@
         (let [runtime (nth (repls/available-options) (:menu-idx state) nil)]
           (if-not runtime
             [state nil]
-            (if (and (:installer runtime) (repls/installation-supported?))
+            (if (and (:installer runtime)
+                     (:install-with-in-1? runtime)
+                     (repls/installation-supported?))
               (try
                 (let [selected (assoc state :repl-id (:id runtime)
                                       :repl-menu-idx (:menu-idx state) :error nil)]
@@ -1583,9 +1614,8 @@
                            [bot-bar]))))
 
 (defn render-parent-dirs
-  "Bordered list of parent dirs; the selected row appends
-    the project name with primary emphasis to preview the final path."
-  [items selected-idx project-name term-width capacity]
+  "Bordered list of parent dirs with primary emphasis on the selected path."
+  [items selected-idx term-width capacity]
   (let [inner-w (- term-width 4)
         h-bar   (apply str (repeat (max 0 inner-w) "─"))
         top     (str " " (style/secondary (str "╭" h-bar "╮")))
@@ -1597,14 +1627,12 @@
           (fn [index item]
             (let [selected? (= index selected-idx)
                   path      (str item)
-                  suffix    (when selected? project-name)
                   slash     (when-not (str/ends-with? path "/") "/")
                   path+     (str path slash)
-                  plain     (str (if selected? " > " "   ") (if selected? path+ path) (or suffix ""))
+                  plain     (str (if selected? " > " "   ") (if selected? path+ path))
                   pad       (apply str (repeat (max 0 (- inner-w (count plain))) " "))
                   content   (str (if selected? (str " " focused-item-arrow " ") "   ")
-                                 (if selected? path+ path)
-                                 (when suffix (style/primary suffix)))]
+                                 (if selected? (style/primary path+) path))]
               (str " "
                    (style/secondary "│")
                    content
@@ -1742,24 +1770,16 @@
                      (= (:mode selected-item) (:repl-install-copy-mode state)))
         command-lines (when copied?
                         (style/helper-lines (:command selected-item) content-width))
+        confirmation-lines (when copied?
+                             (repl-install-copy-confirmation-lines
+                              label (:mode selected-item) (:command selected-item) content-width))
         helper-lines (cond
                        (:error state)
                        (style/helper-lines (:error state) content-width)
 
-                       copied?
-                       (concat
-                        (style/helper-lines
-                         "✓ Copied to clipboard. Open a fresh terminal tab and paste."
-                         content-width)
-                        [""]
-                        (style/helper-lines
-                         "If clipboard access is blocked, copy this manually:"
-                         content-width)
-                        command-lines)
-
                        :else
                        (style/helper-lines (:helper selected-item) content-width))
-        shell-lines (if (< height 18) 4 6)
+        shell-lines (if (< height 18) 5 7)
         helper-limit (max 1 (min 8 (- height (count heading) (count unavailable-note) shell-lines 3)))
         command-fits? (and copied? (<= (count command-lines) helper-limit))
         helper (cond
@@ -1778,25 +1798,33 @@
         helper ((if command-fits? take-last take) final-helper-limit helper)
         helper-tone (if (or (:mode selected-item) (:error state)) :normal :secondary)
         compact-copy? (and copied? (< height 18))
-        complete-compact-copy? (and compact-copy? (>= width 32) (>= height 16))]
-    (if compact-copy?
+        compact-confirmation-lines (take (max 1 (- height 8)) confirmation-lines)]
+    (cond
+      compact-copy?
       (str header
-           "\n"
-           (render-repl-rows [selected-item] 0 width 1 false)
-           "\n"
-           (if complete-compact-copy?
-             (helper-slot helper-lines :normal)
-             "  Enlarge terminal")
+           "\n\n"
+           (helper-slot compact-confirmation-lines :normal)
            "\n  " (style/secondary "Esc · Ctrl-C")
            "\n")
+
+      copied?
+      (str header
+           "\n\n\n"
+           (helper-slot confirmation-lines :normal)
+           "\n"
+           shared-footer
+           "\n")
+
+      :else
       (str header
            section-gap
            (indent-lines heading)
            (when unavailable? (str "\n" (indent-lines unavailable-note)))
            "\n"
            (render-repl-rows items selected width capacity false)
+           (when (seq helper)
+             (str "\n" (helper-slot helper helper-tone)))
            "\n"
-           (helper-slot helper helper-tone)
            shared-footer
            "\n"))))
 
@@ -1934,7 +1962,7 @@
       (str "\n"
            (style/primary (str project-created-at path))
            "\n\n"
-           "    Run " (style/primary "jus tasks") " from project root to select and run tasks."))
+           "    Run `bbtl` from the project root to launch tasks."))
 
     ;; Confetti animation
     (:confetti state)
@@ -1952,8 +1980,7 @@
            (-> path (str/split #"/") last)
            "\n\n"
            "  cd " path "\n\n"
-           "  To pick and run a task:\n"
-           "  jus tasks"
+           "  Run bbtl from the project root to select and run tasks (installed separately)."
            (when (= "lib" (:template r))
              (str "\n\n"
                   "  To publish this library to Clojars:\n"
@@ -2026,10 +2053,10 @@
                     (helper-text "Add more groups in ~/.config/jus/config.edn")))
 
              :source-layout
-             (render-list (source-layout-items state)
-                          (:source-layout-idx state)
-                          (:term-width state)
-                          (menu-row-capacity state))
+             (render-resource-list (source-layout-items state)
+                                   (:source-layout-idx state)
+                                   (:term-width state)
+                                   (menu-row-capacity state))
 
              :developer
              (let [developers (config/developers (:global-config state))]
@@ -2081,10 +2108,14 @@
                  (str (render-parent-dirs
                        parent-dirs
                        (:parent-dirs-idx state)
-                       (text-input/value (:project-name state))
                        (:term-width state)
-                       (menu-row-capacity state 2))
-                      "\n  "
+                       (menu-row-capacity state 4))
+                      "\n  New project path:\n  "
+                      (style/primary
+                       (str (let [parent-dir (nth parent-dirs (:parent-dirs-idx state))]
+                              (if (str/ends-with? parent-dir "/") parent-dir (str parent-dir "/")))
+                            (text-input/value (:project-name state))))
+                      "\n\n  "
                       (helper-text "Add additional parent dirs under :tui :projects in config.edn"))))
 
              :path-confirm
@@ -2156,8 +2187,6 @@
              "https://github.com/paintparty/jus")]
     (str "Usage:\n"
          "  jus          Launch the TUI\n"
-         "  jus tasks    Pick and run a public bb task from ./bb.edn\n"
-         "  jus t        Shorthand for `jus tasks`\n"
          "  jus version  Print the jus version\n"
          "\n"
          logo+link
@@ -2177,15 +2206,6 @@
 
 (defn- missing-executable-message [executable]
   (repls/missing-executable-message executable))
-
-(defn- preflight!
-  [executables]
-  (if-let [missing (some #(when-not (executable-available? %) %) executables)]
-    (do
-      (binding [*out* *err*]
-        (print (missing-executable-message missing)))
-      false)
-    true))
 
 (defn rebel-readline-command
   "Return a standalone Rebel Readline command.
@@ -2245,6 +2265,23 @@
   (print "\033[H\033[2J")
   (flush))
 
+(defn- shell-quote
+  "Quote text as one POSIX-shell argument."
+  [text]
+  (str "'" (str/replace text "'" "'\"'\"'") "'"))
+
+(defn- project-directory-command
+  [target-dir]
+  (str "cd " (shell-quote target-dir)))
+
+(defn- copy-project-directory-command!
+  [target-dir]
+  (let [command (project-directory-command target-dir)]
+    (print (screen/copy-to-clipboard command))
+    (println (str "Copied new project path to clipboard; paste it and press Enter:\n"
+                  command))
+    (flush)))
+
 (defn- repl-menu-state-after-exit
   [state]
   (-> state
@@ -2284,53 +2321,20 @@
               exit-code))
 
           (:done? final-state)
-          (or (:exit-code final-state) 0)
+          (let [exit-code (or (:exit-code final-state) 0)
+                target-dir (get-in final-state [:results :target-dir])]
+            (when (and (zero? exit-code) target-dir)
+              (copy-project-directory-command! target-dir))
+            exit-code)
 
           :else
           (or (:exit-code final-state) 0))))))
-
-(defn- current-bb-edn-path
-  []
-  (-> (io/file "bb.edn") .getAbsolutePath))
-
-(defn- run-tasks!
-  []
-  (let [{:keys [status path tasks error]} (tasks/discover (current-bb-edn-path))]
-    (case status
-      :missing
-      (do
-        (binding [*out* *err*]
-          (println "No bb.edn (with tasks) was found in:")
-          (println (-> (io/file ".") .getCanonicalPath)))
-        1)
-
-      :invalid
-      (do
-        (binding [*out* *err*]
-          (println "Invalid bb.edn:")
-          (println path)
-          ;; ERROR
-          (println error))
-        1)
-
-      :ok
-      (if (seq tasks)
-        (tasks/run-picker! tasks)
-        (do
-          (println "No public bb tasks found in:")
-          (println path)
-          0)))))
 
 (defn run-cli!
   [& args]
   (case (vec args)
     []
     (run-wizard!)
-
-    (["tasks"] ["t"])
-    (if (preflight! ["bb"])
-      (run-tasks!)
-      1)
 
     (["-h"] ["--help"])
     (do
@@ -2340,6 +2344,13 @@
     (["-version"] ["--version"] ["version"])
     (do
       (println "jus" version)
+      0)
+
+    (["tasks"] ["t"])
+    (do
+      (println (str "To list and run bb.edn tasks, install "
+                    (style/hyperlink "bbtl" bbtl-url) ":\n"
+                    "bbin install io.github.paintparty/bbtl"))
       0)
 
     (do

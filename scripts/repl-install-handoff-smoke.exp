@@ -9,7 +9,9 @@ set driver {
 (let [state (with-redefs [style/intel-mac? false
                           repls/discover (constantly nil)]
               (program/run {:init (fn [] [(assoc (core/main-menu-state {})
-                                                  :step :repl-menu :menu-idx 6)
+                                                  :step :repl-menu
+                                                  :menu-idx (.indexOf (mapv :id (repls/available-options))
+                                                                      :glojure))
                                           nil])
                             :update core/update-fn :view core/view :alt-screen true}))]
   (println "EXIT_CODE" (:exit-code state))
@@ -25,15 +27,15 @@ proc expect_text {pattern description} {
 }
 
 foreach {mode expected} {
-    temporary {YmFzaCAtYyAnc291cmNlIDwoY3VybCAtZnNTTCBodHRwczovL2luLTEuY2MpIC0tdGVtcCBnbGogJiYgZXhlYyBnbGon}
-    persistent {YmFzaCAtYyAnc291cmNlIDwoY3VybCAtZnNTTCBodHRwczovL2luLTEuY2MpIC0tbG9jYWwgZ2xqIFBSRUZJWD0iJEhPTUUvLmxvY2FsIiAmJiBleGVjIGdsaic=}
+    temporary {aW4tMSAtLXRlbXAgZ2xqICYmIGdsag==}
+    local {aW4tMSAtLWxvY2FsIGdsaiAmJiBnbGo=}
 } {
     spawn -noecho bb -e $driver
     stty rows 24 columns 120 < $spawn_out(slave,name)
     expect_text {Select REPL type} "dialect menu"
     send -- "\r"
     expect_text {Glojure installation not found} "copy menu"
-    if {$mode eq "persistent"} {send -- "\033\[B"}
+    if {$mode eq "local"} {send -- "\033\[B"}
     send -- "\r"
     expect {
         -re $osc_pattern {
@@ -44,7 +46,9 @@ foreach {mode expected} {
         timeout {error "Timed out: $mode OSC 52 clipboard payload"}
         eof {error "Unexpected EOF: $mode OSC 52 clipboard payload"}
     }
-    expect_text {Copied to clipboard\. Open a fresh terminal tab and paste\.} "$mode confirmation"
+    expect_text {Copied to clipboard} "$mode confirmation"
+    set mode_label [expr {$mode eq "temporary" ? "temp" : $mode}]
+    expect_text "Glojure in-1 $mode_label install command" "$mode confirmation details"
     send -- "\033"
     expect_text {Select REPL type} "return to dialect menu"
     send -- "\003"

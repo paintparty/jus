@@ -274,6 +274,20 @@
     (is (not (contains? group-derived-request :main)))
     (is (= :developer (:step advanced)))))
 
+(deftest source-namespace-layout-paths-truncate-within-the-menu-border
+  (let [term-width 66
+        state (assoc (core/project-wizard-state example-global-config)
+                     :step :source-layout
+                     :term-width term-width
+                     :project-name (text-input/text-input :value "asfadsfasdfdsa"))
+        rendered (core/strip-ansi (core/view state))
+        menu-lines (filter #(or (str/includes? % "Project-rooted")
+                                (str/includes? % "Group-derived"))
+                           (str/split-lines rendered))]
+    (is (= 2 (count menu-lines)))
+    (is (every? #(<= (count %) term-width) menu-lines))
+    (is (str/includes? rendered "src/io/github/example/asf..."))))
+
 (deftest developer-is-optional-without-saved-developers
   (let [blank-state (assoc (core/project-wizard-state {})
                            :step :developer
@@ -324,9 +338,10 @@
                                (config/project-config {:parent-dirs parent-dirs}))
                               :step :parent-dir-select
                               :parent-dirs-idx 8
-                              :term-height height))]
-    (doseq [screen [license-screen parent-screen]]
-      (is (<= (count (str/split-lines (core/strip-ansi screen))) height)))
+                              :term-height (+ height 2)))]
+    (is (<= (count (str/split-lines (core/strip-ansi license-screen))) height))
+    (is (<= (count (str/split-lines (core/strip-ansi parent-screen)))
+            (+ height 2)))
     (is (str/includes? license-screen (style/secondary " ↑ 2 more")))
     (is (str/includes? license-screen (style/secondary " ↓ 1 more")))
     (is (str/includes? (core/strip-ansi license-screen) "> BSD-2-Clause"))
@@ -373,7 +388,6 @@
         narrow (core/strip-ansi (core/view (assoc about :term-width 40)))
         urls ["https://babashka.org/"
               "https://github.com/TimoKramer/charm.clj"
-              "https://github.com/clj-commons/rewrite-clj"
               "https://github.com/weavejester/cljfmt"
               "https://github.com/paintparty/jus"
               "https://github.com/sponsors/paintparty"]]
@@ -613,7 +627,8 @@
   (let [initial (assoc (core/main-menu-state example-global-config)
                        :step :repl-menu)
         [down _] (core/update-fn initial (msg/key-press :down))
-        [last-item _] (core/update-fn down (msg/key-press "j"))
+        [cljr _] (core/update-fn down (msg/key-press "j"))
+        [last-item _] (core/update-fn cljr (msg/key-press :down))
         [clamped _] (core/update-fn last-item (msg/key-press :down))
         [up _] (core/update-fn clamped (msg/key-press "k"))
         [launch launch-cmd] (core/update-fn up (msg/key-press :enter))
@@ -621,12 +636,13 @@
         [_ quit-cmd] (core/update-fn initial (msg/key-press "c" :ctrl true))
         rendered (core/strip-ansi (core/view initial))]
     (is (= 1 (:menu-idx down)))
-    (is (= 2 (:menu-idx last-item)))
-    (is (= 3 (:menu-idx clamped)))
-    (is (= 2 (:menu-idx up)))
+    (is (= 2 (:menu-idx cljr)))
+    (is (= 3 (:menu-idx last-item)))
+    (is (= 4 (:menu-idx clamped)))
+    (is (= 3 (:menu-idx up)))
     (is (= :repl (:action launch)))
     (is (= :babashka (:repl-id launch)))
-    (is (= 2 (:repl-menu-idx launch)))
+    (is (= 3 (:repl-menu-idx launch)))
     (is (= program/quit-cmd launch-cmd))
     (is (= :main-menu (:step back)))
     (is (zero? (:menu-idx back)))
@@ -634,11 +650,12 @@
     (is (= 130 (:exit-code (first (core/update-fn initial
                                                   (msg/key-press "c" :ctrl true))))))
     (is (str/includes? rendered "Select REPL type"))
-    (is (str/includes? rendered "Clojure                      JVM, default"))
-    (is (str/includes? rendered "ClojureScript                JS"))))
+    (is (str/includes? rendered "Clojure        JVM, default"))
+    (is (str/includes? rendered "ClojureScript  JS"))))
 
 (deftest repl-menu-shows-secondary-overflow-counts-around-the-visible-items
-  (with-redefs [repls/available-options (constantly repls/options)]
+  (with-redefs [repls/available-options
+                (constantly (subvec (into repls/options repls/more-options) 0 13))]
     (let [render (fn [selected height]
                    (core/view
                     (assoc (core/main-menu-state example-global-config)
@@ -658,7 +675,7 @@
       (is (not (re-find #"↓ \d+ more" (core/strip-ansi top-only))))
       (is (< (.indexOf both-sides "↑ 2 more")
              (.indexOf both-sides "Babashka")))
-      (is (< (.indexOf both-sides "Janet")
+      (is (< (.indexOf both-sides "Glojure")
              (.indexOf both-sides "↓ 2 more"))))))
 
 (defn- final-confirmation-state [parent]
@@ -967,6 +984,22 @@
     (is (zero? (:nav-idx back)))
     (is (str/includes? project-path-rendered "> Browse file tree..."))))
 
+(deftest parent-directory-picker-separates-the-selected-parent-and-new-project-path
+  (let [state (assoc (core/project-wizard-state
+                      (config/project-config {:parent-dirs ["/tmp/projects" "/tmp/other/"]}))
+                     :step :parent-dir-select
+                     :parent-dirs-idx 0
+                     :project-name (text-input/text-input :value "my-lib"))
+        rendered (core/view state)
+        selected-row (some #(when (str/includes? % "> /tmp/projects/") %)
+                           (str/split-lines (core/strip-ansi rendered)))]
+    (is (str/includes? rendered (str core/focused-item-arrow " " (style/primary "/tmp/projects/"))))
+    (is (not (str/includes? selected-row "my-lib")))
+    (is (str/includes? rendered "New project path:"))
+    (is (str/includes? rendered (style/primary "/tmp/projects/my-lib")))
+    (is (str/includes? rendered
+                       (style/secondary "Add additional parent dirs under :tui :projects in config.edn")))))
+
 (deftest location-browser-follows-focus-within-short-terminal-menus
   (let [height 16
         items (mapv (fn [index]
@@ -1076,8 +1109,9 @@
     (is (= program/quit-cmd quit-command))
     (is (str/includes? completion-rendered target))
     (is (str/includes? completion-rendered "cd "))
-    (is (str/includes? completion-rendered "jus"))
-    (is (str/includes? completion-rendered "tasks"))
+    (is (str/includes? completion-rendered
+                       "Run bbtl from the project root to select and run tasks (installed separately)."))
+    (is (not (str/includes? completion-rendered "jus tasks")))
     (is (str/includes? completion-rendered "CLOJARS_USERNAME"))
     (is (str/includes? completion-rendered "CLOJARS_PASSWORD"))
     (is (str/includes? completion-rendered "bb ci:deploy"))))
@@ -1638,7 +1672,13 @@
                      :term-width 80}
         output (with-redefs [program/run (fn [_] final-state)]
                  (with-out-str (core/-main)))]
-    (is (= "\033[H\033[2J" output))))
+    (is (str/starts-with? output "\033[H\033[2J\033]52;c;"))
+    (is (str/includes? output "Copied project directory command to clipboard"))
+    (is (str/includes? output "cd '/tmp/jus-persistent-hint/my-lib'"))))
+
+(deftest project-directory-command-quotes-special-paths
+  (is (= "cd '/tmp/jus '\"'\"'s/my app'"
+         (#'core/project-directory-command "/tmp/jus 's/my app"))))
 
 (deftest repl-handoff-does-not-clear-the-console-again
   (let [launched (atom nil)
@@ -1710,8 +1750,23 @@
                  (with-out-str
                    (is (= 0 (core/run-cli! "--help")))))]
     (is (str/includes? result "Usage:"))
-    (is (str/includes? result "jus tasks"))
+    (is (not (str/includes? result "jus tasks")))
     (is (= "" (str err)))))
+
+(deftest removed-task-routes-show-bbtl-deprecation-message
+  (doseq [argument ["tasks" "t"]]
+    (let [err    (java.io.StringWriter.)
+          output (binding [*err* err]
+                   (with-redefs [style/hyperlinks-enabled? (constantly true)]
+                     (with-out-str
+                       (is (= 0 (core/run-cli! argument))))))]
+      (is (= "" (str err)))
+      (is (str/includes? output
+                         (str "To list and run bb.edn tasks, install "
+                              "\033]8;;https://github.com/paintparty/bbtl\033\\"
+                              "\033[4mbbtl\033[24m"
+                              "\033]8;;\033\\:\n"
+                              "bbin install io.github.paintparty/bbtl"))))))
 
 (deftest cli-version-flags-print-the-jus-version-to-stdout
   (doseq [flag ["-version" "--version" "version"]]
@@ -1785,62 +1840,3 @@
          (is (= "" output))
          (is @started)
          (is (= "" (str err)))))))
-
-(deftest cli-reports-missing-bb-for-tasks-before-discovery
-  (let [err        (java.io.StringWriter.)
-        discovered (atom false)]
-    (with-redefs-fn {#'core/executable-available? (constantly false)
-                     #'jus.tui.tasks/discover (fn [_]
-                                                (reset! discovered true)
-                                                {:status :ok :tasks []})}
-      #(let [output (binding [*err* err]
-                      (with-out-str
-                        (is (= 1 (core/run-cli! "tasks")))))]
-         (is (= "" output))
-         (is (false? @discovered))
-         (is (str/includes? (str err) "Required executable not found: bb"))))))
-
-(deftest cli-tasks-reports-discovery-errors-and-empty-task-list
-  (with-redefs-fn {#'core/executable-available? (constantly true)}
-    #(do
-       (let [err (java.io.StringWriter.)]
-         (with-redefs [jus.tui.tasks/discover (constantly {:status :missing})]
-           (let [output (binding [*err* err]
-                          (with-out-str
-                            (is (= 1 (core/run-cli! "tasks")))))]
-             (is (= "" output))
-             (is (str/includes? (str err) "No bb.edn (with tasks) was found in:")))))
-       (let [err (java.io.StringWriter.)]
-         (with-redefs [jus.tui.tasks/discover
-                       (constantly {:status :invalid
-                                    :path   "/tmp/project/bb.edn"
-                                    :error  "Map entry is missing a value"})]
-           (let [output (binding [*err* err]
-                          (with-out-str
-                            (is (= 1 (core/run-cli! "tasks")))))]
-             (is (= "" output))
-             (is (str/includes? (str err) "Invalid bb.edn:"))
-             (is (str/includes? (str err) "/tmp/project/bb.edn"))
-             (is (str/includes? (str err) "Map entry is missing a value")))))
-       (with-redefs [jus.tui.tasks/discover
-                     (constantly {:status :ok
-                                  :path   "/tmp/project/bb.edn"
-                                  :tasks  []})]
-         (let [err    (java.io.StringWriter.)
-               output (binding [*err* err]
-                        (with-out-str
-                          (is (= 0 (core/run-cli! "tasks")))))]
-           (is (str/includes? output "No public bb tasks found in:"))
-           (is (str/includes? output "/tmp/project/bb.edn"))
-           (is (= "" (str err))))))))
-
-(deftest cli-tasks-propagates-picker-exit-code
-  (with-redefs-fn {#'core/executable-available? (constantly true)
-                   #'jus.tui.tasks/discover (constantly {:status :ok
-                                                         :path   "/tmp/project/bb.edn"
-                                                         :tasks  [{:name "test"
-                                                                   :doc  ""}]})
-                   #'jus.tui.tasks/run-picker! (fn [tasks]
-                                                 (is (= [{:name "test" :doc ""}] tasks))
-                                                 42)}
-    #(is (= 42 (core/run-cli! "tasks")))))

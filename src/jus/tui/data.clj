@@ -7,7 +7,7 @@
                :desc  "Clojure JVM"
                :url   "https://clojure.org/"}
               {:label "Clojure CLR"
-               :desc  "Clojure on the Common Language Runtime"
+               :desc  "Microsoft's .NET CLR"
                :url   "https://clojure.org/about/clojureclr"}
               {:label "ClojureScript"
                :desc  "Targets JS"

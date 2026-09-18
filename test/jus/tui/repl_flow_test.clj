@@ -25,7 +25,9 @@
 (clojure.test/use-fixtures :each with-extended-platform)
 
 (defn selected []
-  (assoc (core/main-menu-state {}) :step :repl-menu :menu-idx 6))
+  (assoc (core/main-menu-state {})
+         :step :repl-menu
+         :menu-idx (.indexOf (mapv :id (repls/available-options)) :glojure)))
 
 (defn missing-menu []
   (with-redefs [repls/discover (constantly nil)]
@@ -44,7 +46,19 @@
     (doseq [message [(msg/key-press :escape) (msg/key-press :enter)]]
       (let [[back command] (core/update-fn (assoc state :menu-idx 3) message)]
         (is (= :repl-menu (:step back)))
-        (is (= 6 (:menu-idx back)))
+        (is (= (.indexOf (mapv :id (repls/available-options)) :glojure)
+               (:menu-idx back)))
+        (is (nil? command))))))
+
+(deftest missing-runtime-without-in-1-support-skips-the-install-menu
+  (let [jank-index (.indexOf (mapv :id (repls/available-options)) :jank)]
+    (with-redefs [repls/discover (constantly nil)]
+      (let [[state command]
+            (core/update-fn (assoc (core/main-menu-state {})
+                                   :step :repl-menu :menu-idx jank-index)
+                            (msg/key-press :enter))]
+        (is (= :repl-menu (:step state)))
+        (is (str/includes? (:error state) "Required executable not found: jank"))
         (is (nil? command))))))
 
 (deftest missing-runtime-menu-explains-the-temporary-copy-action
@@ -57,18 +71,21 @@
                               " jus ╱ Launch Interactive REPL ╱ Glojure")))
       (is (str/includes? plain
                          (str "  " first-line "\n"
-                              "  This will be a temp install using in-1, a tool for\n"
-                              "  installing things quickly and easily, with no prerequisites.")))
+                              "  \n"
+                              "  This will be a temp install using in-1, a tool for installing\n"
+                              "  things quickly and easily, with no prerequisites.")))
       (is (str/includes? plain
-                         "Copy Glojure temporary install + launch command"))
+                         (str "> Glojure temporary install & launch  "
+                              "Copy in-1 command to clipboard")))
       (is (str/includes? plain
-                         "Copy Glojure persistent install + launch command"))
+                         (str "Glojure local install & launch      "
+                              "Copy in-1 command to clipboard")))
       (is (not (str/includes? plain "Instant Dialect Commands")))
       (is (not (str/includes? screen (style/secondary first-line))))
       (is (str/includes? plain
                          "Enter: copy,  ↑↓: menus,  Esc: back,  Ctrl-C: quit")))))
 
-(deftest persistent-copy-action-has-local-install-helper
+(deftest local-copy-action-has-local-install-helper
   (let [screen-for (fn [index]
                      (clean-screen
                       (core/view (assoc (missing-menu)
@@ -76,8 +93,9 @@
     (is (str/includes?
          (screen-for 1)
          (str "  This will copy an install snippet to your clipboard.\n"
-              "  This will be a local install using in-1, a tool for\n"
-              "  installing things quickly and easily, with no prerequisites.")))
+              "  \n"
+              "  This will be a local install using in-1, a tool for installing\n"
+              "  things quickly and easily, with no prerequisites.")))
     (is (not (str/includes? (screen-for 1) "bash -c")))
     (is (str/includes? (screen-for 2)
                        "  https://github.com/glojurelang/glojure#prerequisites"))))
@@ -93,7 +111,7 @@
       (is (str/includes? screen "View Janet Install Guide"))
       (is (str/includes? screen "Cancel"))
       (is (not (str/includes? screen "Install Janet, Temporary")))
-      (is (not (str/includes? screen "Install Janet, Persistent")))
+      (is (not (str/includes? screen "Janet local install & launch")))
       (is (= 1 (:menu-idx (first (core/update-fn (assoc state :menu-idx 1)
                                                  (msg/key-press :down)))))))))
 
@@ -106,9 +124,8 @@
 
 (deftest copy-actions-write-the-clipboard-and-stay-on-the-menu
   (doseq [[index mode snippet]
-          [[0 :temporary "bash -c 'source <(curl -fsSL https://in-1.cc) --temp glj && exec glj'"]
-           [1 :persistent (str "bash -c 'source <(curl -fsSL https://in-1.cc) --local glj "
-                               "PREFIX=\"$HOME/.local\" && exec glj'")]]]
+          [[0 :temporary "in-1 --temp glj && glj"]
+           [1 :local "in-1 --local glj && glj"]]]
     (let [[copying command] (core/update-fn (assoc (missing-menu) :menu-idx index)
                                             (msg/key-press :enter))
           completion (atom nil)
@@ -123,16 +140,26 @@
         completion (atom nil)
         _ (with-out-str (reset! completion ((:fn command))))
         state (first (core/update-fn copying @completion))
-        snippet "bash -c 'source <(curl -fsSL https://in-1.cc) --temp glj && exec glj'"
+        snippet "in-1 --temp glj && glj"
         screen (core/view (assoc state :term-width 80 :term-height 24))
         plain (clean-screen screen)
-        confirmation "✓ Copied to clipboard. Open a fresh terminal tab and paste."]
+        confirmation "✓ Copied to clipboard: Glojure in-1 temp install command"]
     (is (str/includes? plain
                        (str "  " confirmation "\n"
                             "  \n"
+                            "  Open a fresh terminal tab and paste.\n"
+                            "  \n"
                             "  If clipboard access is blocked, copy this manually:\n"
-                            "  " snippet)))
-    (is (not (str/includes? screen (style/secondary confirmation))))
+                            "  " snippet "\n"
+                            "  \n"
+                            "  Install in-1 for Bash/Zsh:\n"
+                            "  source <(curl -sL in-1.cc) in-1\n"
+                            "  \n"
+                            "  Install in-1 for Fish:\n"
+                            "  curl -sL in-1.cc | source - in-1")))
+    (is (str/includes? screen (style/primary "✓ Copied to clipboard")))
+    (is (not (str/includes? plain "Glojure installation not found.")))
+    (is (not (str/includes? plain "Glojure temporary install & launch")))
     (let [next-state (first (core/update-fn state (msg/key-press :down)))]
       (is (nil? (:repl-install-copy-mode next-state)))
       (is (str/includes? (clean-screen (core/view (assoc next-state
@@ -189,7 +216,5 @@
       (is (every? #(<= (count %) width) lines) (str "copied " width))
       (is (<= (count lines) height) (str "copied " width "x" height))
       (if (= width 32)
-        (do (is (str/includes? rendered "✓ Copied to clipboard. Open"))
-            (is (str/includes? rendered "a fresh terminal tab and\n  paste."))
-            (is (str/includes? rendered "exec glj'") "complete manual fallback"))
-        (is (str/includes? rendered "\n  Enlarge terminal\n") "explicit size fallback")))))
+        (is (str/includes? rendered "✓ Copied to clipboard:"))
+        (is (str/includes? rendered "✓ Copied to") "compact confirmation")))))

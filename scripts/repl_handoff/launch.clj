@@ -87,8 +87,20 @@
          java.io.File/separator (sha-256 canonical-directory))))
 
 (def native-runtimes
-  {:glojure ["glj"] :gloat ["gloat" "--repl"] :gobb ["gobb"]
-   :hy ["hy"] :janet ["janet"] :joker ["joker"] :phel ["phel"]})
+  {:basilisp ["basilisp" "repl"]
+   :cljr     ["cljr"]
+   :cljgo    ["cljgo" "repl"]
+   :fennel   ["fennel"]
+   :glojure  ["glj"]
+   :gloat    ["gloat" "--repl"]
+   :gobb     ["gobb"]
+   :hy       ["hy"]
+   :jank     ["jank" "repl"]
+   :janet    ["janet"]
+   :joker    ["joker"]
+   :phel     ["phel"]
+   :squint   ["squint" "repl"]
+   :ys       ["ys" "--help"]})
 
 (defn runtime-command
   [runtime working-directory]
