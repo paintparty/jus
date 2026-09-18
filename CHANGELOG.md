@@ -1,7 +1,7 @@
 # Changelog
 [Jus](https://github.com/paintparty/jus): A TUI app for Clojure dialects 
 
-## 0.2.0
+## 0.3.0
 
 ### Changed
 - Bump deps-new to `0.14.1`. Minimum bb version for generated projects is `1.13.222`. [#24](https://github.com/paintparty/jus/issues/24)
@@ -13,6 +13,11 @@
 - Navigate user back to just after repl session [#17](https://github.com/paintparty/jus/issues/17)
 - Hand off missing REPL installation to copyable in-1 snippets instead of running the installer inside jus.
 - Add more dialects with in-1 installer [#21](https://github.com/paintparty/jus/issues/21)
+
+
+## 0.2.0
+
+### Changed
 - Use "*" for loading spinner.
 - UX writing updates
 - Add Jolt to resources

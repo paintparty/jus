@@ -23,7 +23,7 @@
 
 (def version
   "The current jus release version."
-  "0.2.0")
+  "0.3.0")
 
 (def bbtl-url "https://github.com/paintparty/bbtl")
 
