@@ -8,8 +8,8 @@
 (def ^{:doc "The sole pinned deps-new coordinate used for generator subprocesses."}
   deps-new-coordinate
   '{io.github.seancorfield/deps-new
-    {:git/tag "v0.12.2"
-     :git/sha "465b303"}})
+    {:git/tag "v0.14.1"
+     :git/sha "39d257c"}})
 
 (def ^:private required-options
   [:template :name :target-dir :license/id :build])

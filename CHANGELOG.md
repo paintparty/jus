@@ -4,6 +4,7 @@
 ## 0.2.0
 
 ### Changed
+- Bump deps-new to `0.14.1`. Minimum bb version for generated projects is `1.13.222`. [#24](https://github.com/paintparty/jus/issues/24)
 - Hand off missing REPL installation to copyable in-1 snippets instead of running the installer inside jus.
 - Use "*" for loading spinner.
 - UX writing updates
