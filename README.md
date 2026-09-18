@@ -9,11 +9,11 @@
 
 <br>
 
-Scaffold new projects, run tasks, launch REPLs, and explore community resources.
+Scaffold new projects, launch REPLs, and explore community resources.
 
 <br>
 
-Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj), with help from [rewrite-clj](https://github.com/clj-commons/rewrite-clj) + [cljfmt](https://github.com/weavejester/cljfmt). 
+Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj), with help from [cljfmt](https://github.com/weavejester/cljfmt).
 
 Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new).
 
@@ -27,15 +27,6 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 <br>
 
 ## Features
-
-• &nbsp;  **Select and run bb tasks:**
-
-<p align="center">
-  <img src="resources/screens/motion/jus-tasks_light-mode.gif#gh-light-mode-only"></img>
-  <img src="resources/screens/motion/jus-tasks_dark-mode.gif#gh-dark-mode-only"></img>
-</p>
-
-<br>
 
 • &nbsp;  **Launch the ***New Project Wizard*** to scaffold a new Clojure [deps.edn](https://clojure.org/reference/deps_edn) project. More project types coming soon.**
 
@@ -73,41 +64,9 @@ Early days.
 ## Requirements
 [Java](https://clojure.org/guides/install_clojure#java) <br>
 [Clojure](https://clojure.org/guides/install_clojure) <br>
-[Babashka`v1.13.219`](https://github.com/babashka/babashka#installation) <br>
+[Babashka`v1.13.222`](https://github.com/babashka/babashka#installation) <br>
 [bbin](https://github.com/babashka/bbin)
-
 <br>
-
-## Extended REPL dialects
-
-On Linux and macOS, the REPL menu also includes Glojure, Gloat, Gobb, Hy,
-Janet, Joker, and Phel. Jolt, let-go, and these seven dialects can be installed
-using snippets provided by the menu and [in-1](https://in-1.cc/install/).
-Installation requires Bash, Git, curl, and GNU make on `PATH`; in-1 obtains the
-dialect's host runtime. Available binaries depend on upstream platform support.
-
-When a dialect is missing, choose the temporary or persistent copy action. Jus
-copies a complete Bash-wrapped install-and-launch snippet using OSC 52 and also
-shows it for manual copying when terminal clipboard access is blocked. Open a
-fresh terminal tab, paste the snippet, and in-1 will install and immediately
-launch the selected REPL. Temporary installs use `${TMPDIR:-/tmp}/in-1`;
-persistent installs use `$HOME/.local`.
-
-Jus does not execute or supervise in-1, so installation output and failures stay
-in the fresh terminal tab. The original jus screen remains open; Escape returns
-to the dialect menu and Ctrl-C exits. Jus searches `PATH`, then
-`$HOME/.local/bin`, then the temporary prefix's `bin` directory on later
-selections. Temporary installations remain until temporary storage is cleaned;
-jus does not remove shared in-1 files or edit shell startup files.
-
-The installation menu includes official dialect guides and terminal hyperlinks
-in helper text. `NO_COLOR` or `TERM=dumb` disables helper hyperlink escapes.
-Windows retains its existing six REPL choices; in-1 integration on Windows/WSL
-is deferred.
-
-For deterministic clipboard/menu terminal checks, run
-`scripts/repl-install-handoff-smoke.exp` from the repository root. It verifies
-both OSC 52 payloads and the return path without network access.
 
 ## Installation
 
@@ -166,14 +125,7 @@ jus
 ```
 <br>
 
-If your project has a `bb.edn` file with `tasks` defined, you can interactively browse and select tasks:
-```
-jus tasks
-```
-Shorthand for `jus tasks`
-```
-jus t
-```
+For running tasks in projects that contain a `bb.edn`, check out [bbtl](https://github.com/paintparty/bbtl).
 
 <br>
 
