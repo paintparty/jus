@@ -89,6 +89,10 @@
   [s]
   (charm-style/render italic-style s))
 
+(defn bold-italic
+  [s]
+  (sgr "1;3" s))
+
 (defn secondary
   "Secondary text. Uses a neutral medium gray."
   [s]
@@ -189,14 +193,15 @@
   (let [width (max 1 width)
         wrap-line
         (fn [line]
-          (let [tokens (re-seq #"\[([^\]]+)\]\((https?://[^\s)]+)\)([.,;:!?]?)|([^\s]+)" line)
+          (let [tokens (re-seq #"\*\*\*([^*]+)\*\*\*|\[([^\]]+)\]\((https?://[^\s)]+)\)([.,;:!?]?)|([^\s]+)" line)
                 words (mapcat
-                       (fn [[_ label url punctuation plain]]
-                         (let [source (or label plain)
+                       (fn [[_ emphasized label url punctuation plain]]
+                         (let [source (or emphasized label plain)
                                link-url (or url
                                             (when (and plain
                                                        (re-matches #"https?://[^\s]+" plain))
                                               plain))
+                               emphasized? (some? emphasized)
                                pieces (vec
                                        (for [word (str/split source #"\s+")
                                              piece (partition-all width (str/replace word "`" ""))]
@@ -205,15 +210,20 @@
                             (fn [index piece]
                               {:text piece
                                :url link-url
+                               :emphasized? emphasized?
                                :suffix (if (= index (dec (count pieces))) punctuation "")})
                             pieces))) tokens)]
             (:lines
-             (reduce (fn [{:keys [lines column]} {:keys [text url suffix]}]
+             (reduce (fn [{:keys [lines column]} {:keys [text url emphasized? suffix]}]
                        (let [visible-text (str text suffix)
                              new-line? (> (+ column (if (pos? column) 1 0)
                                              (count visible-text)) width)
                              gap (if (or new-line? (zero? column)) "" " ")
-                             rendered (str gap (if url (hyperlink text url) text) suffix)]
+                             rendered (str gap (cond
+                                                 url (hyperlink text url)
+                                                 emphasized? (bold-italic text)
+                                                 :else text)
+                                           suffix)]
                          {:lines (if new-line? (conj lines rendered)
                                      (update lines (dec (count lines)) str rendered))
                           :column (+ (if new-line? 0 column)

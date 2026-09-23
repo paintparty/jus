@@ -65,14 +65,14 @@
   (with-redefs [style/hyperlinks-enabled? (constantly true)]
     (let [screen (core/view (assoc (missing-menu) :term-width 80 :term-height 24))
           plain (clean-screen screen)
-          first-line "This will copy an install snippet to your clipboard."]
+          first-line "This will copy a temporary install snippet to your clipboard."]
       (is (str/includes? plain
                          (str style/logo
                               " jus ╱ Launch Interactive REPL ╱ Glojure")))
       (is (str/includes? plain
                          (str "  " first-line "\n"
                               "  \n"
-                              "  This will be a temp install using in-1, a tool for installing\n"
+                              "  This will be a temporary install using in-1, a tool for installing\n"
                               "  things quickly and easily, with no prerequisites.")))
       (is (str/includes? plain
                          (str "> Glojure temporary install & launch  "
@@ -92,7 +92,7 @@
                                         :term-width 80 :term-height 24 :menu-idx index))))]
     (is (str/includes?
          (screen-for 1)
-         (str "  This will copy an install snippet to your clipboard.\n"
+         (str "  This will copy a local install snippet to your clipboard.\n"
               "  \n"
               "  This will be a local install using in-1, a tool for installing\n"
               "  things quickly and easily, with no prerequisites.")))
@@ -143,7 +143,7 @@
         snippet "in-1 --temp glj && glj"
         screen (core/view (assoc state :term-width 80 :term-height 24))
         plain (clean-screen screen)
-        confirmation "✓ Copied to clipboard: Glojure in-1 temp install command"]
+        confirmation "✓ Copied to clipboard: Glojure in-1 temp install command."]
     (is (str/includes? plain
                        (str "  " confirmation "\n"
                             "  \n"
@@ -156,8 +156,11 @@
                             "  source <(curl -sL in-1.cc) in-1\n"
                             "  \n"
                             "  Install in-1 for Fish:\n"
-                            "  curl -sL in-1.cc | source - in-1")))
+                            "  curl -sL in-1.cc | source - in-1\n"
+                            "  \n"
+                            "  in-1 info: https://in-1.cc/")))
     (is (str/includes? screen (style/primary "✓ Copied to clipboard")))
+    (is (str/includes? screen "\u001b]8;;https://in-1.cc/"))
     (is (not (str/includes? plain "Glojure installation not found.")))
     (is (not (str/includes? plain "Glojure temporary install & launch")))
     (let [next-state (first (core/update-fn state (msg/key-press :down)))]

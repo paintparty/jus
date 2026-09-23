@@ -650,7 +650,7 @@
   (let [mode-label (case mode :temporary "temp" :local "local")
         confirmation (style/helper-lines
                       (str "✓ Copied to clipboard: " label " in-1 " mode-label
-                           " install command")
+                           " install command.")
                       width)]
     (concat
      (map-indexed (fn [index line]
@@ -669,7 +669,9 @@
      ["source <(curl -sL in-1.cc) in-1"]
      [""]
      (style/helper-lines "Install in-1 for Fish:" width)
-     ["curl -sL in-1.cc | source - in-1"])))
+     ["curl -sL in-1.cc | source - in-1"]
+     [""]
+     (style/helper-lines "in-1 info: [https://in-1.cc/](https://in-1.cc/)" width))))
 
 (defn- repl-install-items
   [runtime]
@@ -678,15 +680,15 @@
                         :desc "Copy in-1 command to clipboard"
                         :mode :temporary
                         :command (repls/install-snippet runtime :temporary)
-                        :helper (str "This will copy an install snippet to your clipboard.\n\n"
-                                     "This will be a temp install using in-1, a tool for installing\n"
+                        :helper (str "This will copy a ***temporary*** install snippet to your clipboard.\n\n"
+                                     "This will be a ***temporary*** install using [in-1](https://in-1.cc/), a tool for installing\n"
                                      "things quickly and easily, with no prerequisites.")}
                        {:label (str label " local install & launch")
                         :desc "Copy in-1 command to clipboard"
                         :mode :local
                         :command (repls/install-snippet runtime :local)
-                        :helper (str "This will copy an install snippet to your clipboard.\n\n"
-                                     "This will be a local install using in-1, a tool for installing\n"
+                        :helper (str "This will copy a ***local*** install snippet to your clipboard.\n\n"
+                                     "This will be a ***local*** install using [in-1](https://in-1.cc/), a tool for installing\n"
                                      "things quickly and easily, with no prerequisites.")}]
         guide-and-cancel [{:label (str "View " label " Install Guide") :url guide
                            :desc (str "Official " label " installation info")
