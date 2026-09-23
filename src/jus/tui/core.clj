@@ -27,6 +27,10 @@
 
 (def bbtl-url "https://github.com/paintparty/bbtl")
 
+(def deps-new-version
+  "The git tag of the deps-new coordinate used by project generation."
+  (get-in generator/deps-new-coordinate ['io.github.seancorfield/deps-new :git/tag]))
+
 (def open-in-browser-icon (if @style/windows-10? ">" "↗"))
 
 (def open-in-browser-suffix (str " " open-in-browser-icon " "))
@@ -239,7 +243,7 @@
   (boolean (some #{step} [:main-menu :repl-menu :resources])))
 
 (def about-content
-  "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new).\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty")
+  (str "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new) " deps-new-version ".\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty"))
 
 (defn- resource-items [state]
   (or (peek (:resource-stack state)) data/community-resources))

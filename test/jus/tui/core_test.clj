@@ -395,11 +395,18 @@
     (is (= :about (:step about)))
     (is (= :main-menu (:step back)))
     (is (str/includes? wide "About Jus"))
+    (is (str/includes? core/about-content
+                       (str "deps-new](https://github.com/seancorfield/deps-new) "
+                            core/deps-new-version)))
     (is (str/includes? wide "https://github.com/paintparty/jus"))
     (is (> (count (str/split-lines narrow))
            (count (str/split-lines wide))))
     (with-redefs [style/hyperlinks-enabled? (constantly true)]
       (let [rendered (core/view (assoc about :term-width 100))]
+        (is (str/includes? rendered
+                           (str "\033]8;;https://github.com/seancorfield/deps-new\033\\"
+                                "\033[4mdeps-new\033[24m\033]8;;\033\\ "
+                                core/deps-new-version ".")))
         (doseq [url urls]
           (is (str/includes? rendered (str "\033]8;;" url "\033\\"))))))))
 
