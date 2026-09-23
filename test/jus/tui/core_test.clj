@@ -389,6 +389,7 @@
         urls ["https://babashka.org/"
               "https://github.com/TimoKramer/charm.clj"
               "https://github.com/weavejester/cljfmt"
+              "https://github.com/seancorfield/deps-new"
               "https://github.com/paintparty/jus"
               "https://github.com/sponsors/paintparty"]]
     (is (= :about (:step about)))
