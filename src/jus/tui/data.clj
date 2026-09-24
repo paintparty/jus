@@ -69,8 +69,8 @@
               {:label "Jolt Commons"
                :desc  "Shared home for Jolt libraries and tooling"
                :url   "https://jlt-commons.github.io/"}
-              {:label "Curated repo of packages by the Jank Community"
-               :desc  "https://github.com/jank-lang/commons"
+              {:label "Jank Commons"
+               :desc  "Curated repo of packages by the Jank Community"
                :url   "https://github.com/jank-lang/commons"}
               ]}
 
