@@ -70,11 +70,13 @@
       (is (str/includes? plain
                          (str style/logo
                               " jus ╱ Launch Interactive REPL ╱ Glojure")))
+      (is (str/includes? screen "\u001b[1mtemporary\u001b[0m"))
+      (is (not (str/includes? screen "\u001b[1;3mtemporary\u001b[0m")))
       (is (str/includes? plain
                          (str "  " first-line "\n"
                               "  \n"
-                              "  This will be a temporary install using in-1, a tool for installing\n"
-                              "  things quickly and easily, with no prerequisites.")))
+                              "  This will be a temporary install using in-1, a tool for installing things\n"
+                              "  quickly and easily, with no prerequisites.")))
       (is (str/includes? plain
                          (str "> Glojure temporary install & launch  "
                               "Copy in-1 command to clipboard")))
@@ -97,6 +99,10 @@
               "  \n"
               "  This will be a local install using in-1, a tool for installing things\n"
               "  quickly and easily, with no prerequisites.")))
+    (is (str/includes? (core/view (assoc (missing-menu) :term-width 80 :term-height 24 :menu-idx 1))
+                       "\u001b[1mlocal\u001b[0m"))
+    (is (not (str/includes? (core/view (assoc (missing-menu) :term-width 80 :term-height 24 :menu-idx 1))
+                            "\u001b[1;3mlocal\u001b[0m")))
     (is (not (str/includes? (screen-for 1) "bash -c")))
     (is (str/includes? (screen-for 2)
                        "  https://github.com/glojurelang/glojure#prerequisites"))))
@@ -202,7 +208,8 @@
           plain (clean-screen rendered)]
       (is (str/includes? plain "local install using in-1, a"))
       (is (str/includes? plain "  tool for installing things quickly"))
-      (is (str/includes? rendered "\u001b[1;3mlocal\u001b[0m"))
+      (is (str/includes? rendered "\u001b[1mlocal\u001b[0m"))
+      (is (not (str/includes? rendered "\u001b[1;3mlocal\u001b[0m")))
       (is (str/includes? rendered "\u001b[4min-1\u001b[24m")))))
 
 (deftest helper-links-have-readable-fallback

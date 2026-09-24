@@ -38,6 +38,12 @@
     (is (= "A temporary install" (str/replace rendered #"\u001b\[[0-9;]*m" "")))
     (is (str/includes? rendered "\u001b[1;3m"))))
 
+(deftest helper-lines-render-bold-markdown
+  (let [rendered (first (style/helper-lines "A **temporary** install" 80))]
+    (is (= "A temporary install" (str/replace rendered #"\u001b\[[0-9;]*m" "")))
+    (is (str/includes? rendered "\u001b[1m"))
+    (is (not (str/includes? rendered "\u001b[1;3m")))))
+
 (deftest no-color-does-not-disable-terminal-hyperlinks
   (is (= "\033]8;;https://babashka.org/\033\\\033[4mBabashka\033[24m\033]8;;\033\\"
          (style/hyperlink-for-environment
