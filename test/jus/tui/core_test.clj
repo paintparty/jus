@@ -286,7 +286,7 @@
                            (str/split-lines rendered))]
     (is (= 2 (count menu-lines)))
     (is (every? #(<= (count %) term-width) menu-lines))
-    (is (str/includes? rendered "src/io/github/example/asf..."))))
+    (is (str/includes? rendered "src/io/github/example/as..."))))
 
 (deftest developer-is-optional-without-saved-developers
   (let [blank-state (assoc (core/project-wizard-state {})
@@ -342,11 +342,11 @@
     (is (<= (count (str/split-lines (core/strip-ansi license-screen))) height))
     (is (<= (count (str/split-lines (core/strip-ansi parent-screen)))
             (+ height 2)))
-    (is (str/includes? license-screen (style/secondary " ↑ 2 more")))
-    (is (str/includes? license-screen (style/secondary " ↓ 1 more")))
+    (is (str/includes? license-screen (style/secondary "  ↑ 2 more")))
+    (is (str/includes? license-screen (style/secondary "  ↓ 1 more")))
     (is (str/includes? (core/strip-ansi license-screen) "> BSD-2-Clause"))
-    (is (str/includes? parent-screen (style/secondary " ↑ 7 more")))
-    (is (str/includes? parent-screen (style/secondary " ↓ 3 more")))
+    (is (str/includes? parent-screen (style/secondary "  ↑ 7 more")))
+    (is (str/includes? parent-screen (style/secondary "  ↓ 3 more")))
     (is (str/includes? (core/strip-ansi parent-screen) "> /tmp/parent-8/"))))
 
 (deftest main-menu-routes-to-project-repl-and-resource-actions
@@ -510,8 +510,8 @@
         plain (core/strip-ansi rendered)]
     (is (<= (count (str/split-lines plain)) height))
     (is (str/includes? plain "> Development"))
-    (is (str/includes? rendered (style/secondary " ↑ 2 more")))
-    (is (str/includes? rendered (style/secondary " ↓ 7 more")))))
+    (is (str/includes? rendered (style/secondary "  ↑ 2 more")))
+    (is (str/includes? rendered (style/secondary "  ↓ 7 more")))))
 
 (deftest community-resource-menu-reserves-space-for-the-selected-url
   (let [height 16
@@ -529,8 +529,8 @@
                      :term-height height)
         rendered (core/view state)]
     (is (<= (count (str/split-lines (core/strip-ansi rendered))) height))
-    (is (str/includes? rendered (style/secondary " ↑ 3 more")))
-    (is (str/includes? rendered (style/secondary " ↓ 7 more")))
+    (is (str/includes? rendered (style/secondary "  ↑ 3 more")))
+    (is (str/includes? rendered (style/secondary "  ↓ 7 more")))
     (is (str/includes? rendered "https://example.test/5"))))
 
 (deftest community-resource-selection-persists-when-leaving-nested-menus
@@ -582,6 +582,112 @@
     (is (not (str/includes? (core/strip-ansi (core/view back))
                             "Select a dialect")))))
 
+(deftest menu-lists-pad-all-sides-of-items-and-overflow
+  (let [base (core/main-menu-state example-global-config)
+        browse-state {:term-width 44
+                      :term-height 24
+                      :nav-path "/tmp/projects"
+                      :project-name (text-input/text-input :value "demo")
+                      :nav-items [{:label "First"} {:label "Second"}]
+                      :nav-idx 1}
+        cases {"regular" (core/render-list ["First" "Second"] 0 44 2)
+               "resource" (core/render-resource-list
+                           [{:label "First" :desc "One"}
+                            {:label "Second" :desc "Two"}] 0 44 2)
+               "REPL" (core/view (assoc base :step :repl-menu
+                                        :term-width 44 :term-height 40))
+               "REPL install" (core/view (assoc base :step :repl-install-menu
+                                                :repl-id :clojure :term-width 44))
+               "parent directories" (core/render-parent-dirs
+                                     ["/tmp/first" "/tmp/second"] 0 44 2)
+               "browse" (core/render-browse browse-state)
+               "final location" (core/view
+                                 (assoc (core/project-wizard-state example-global-config)
+                                        :step :path-confirm-final
+                                        :nav-path "/tmp/projects"
+                                        :project-name (text-input/text-input :value "demo")
+                                        :term-width 44))
+               "toggle" (core/render-toggle true 44)}]
+    (doseq [[label rendered] cases]
+      (let [lines (str/split-lines (core/strip-ansi rendered))
+            box (->> lines
+                     (drop-while #(not (str/starts-with? % " ╭")))
+                     (take-while #(not (str/starts-with? % " ╰")))
+                     vec)
+            bottom (first (drop-while #(not (str/starts-with? % " ╰")) lines))]
+        (is (seq box) label)
+        (is bottom label)
+        (is (re-matches #"^ │ +│$" (second box)) label)
+        (is (re-matches #"^ │ +│$" (last box)) label)
+        (is (some #(str/starts-with? % " │  > ") box) label)
+        (is (some #(str/starts-with? % " │    ") box) label)))))
+
+(deftest overflow-rows-replace-menu-padding-without-growing-the-box
+  (let [box (fn [rendered]
+              (->> (str/split-lines (core/strip-ansi rendered))
+                   (drop-while #(not (str/starts-with? % " ╭")))
+                   (take-while #(not (str/starts-with? % " ╰")))
+                   vec))
+        blank? #(boolean (re-matches #"^ │ +│$" %))
+        overflow? (fn [arrow line]
+                    (boolean (re-matches
+                              (re-pattern (str "^ │  " arrow " [0-9]+ more +│$"))
+                              line)))
+        renderers {"regular" (fn [items selected]
+                               (core/render-list items selected 44 4))
+                   "resource" (fn [items selected]
+                                (core/render-resource-list
+                                 (mapv #(hash-map :label %) items) selected 44 4))
+                   "parent directories" (fn [items selected]
+                                          (core/render-parent-dirs items selected 44 4))
+                   "REPL" (fn [items selected]
+                            (with-redefs [repls/available-options
+                                          (constantly (mapv #(hash-map :label %) items))]
+                              (core/view
+                               (assoc (core/main-menu-state example-global-config)
+                                      :step :repl-menu
+                                      :term-width 44
+                                      :term-height 16
+                                      :menu-idx selected))))}
+        short-items (mapv str (range 4))
+        long-items (mapv str (range 20))]
+    (doseq [[label render] renderers]
+      (let [full (box (render short-items 0))
+            bottom (box (render long-items 0))
+            both (box (render long-items 10))
+            top (box (render long-items 19))]
+        (is (apply = (map count [full bottom both top])) label)
+        (is (blank? (second full)) label)
+        (is (blank? (last full)) label)
+        (is (blank? (second bottom)) label)
+        (is (overflow? "↓" (last bottom)) label)
+        (is (overflow? "↑" (second both)) label)
+        (is (overflow? "↓" (last both)) label)
+        (is (overflow? "↑" (second top)) label)
+        (is (blank? (last top)) label)))
+    (let [items (mapv #(hash-map :label (str "dir-" %)) (range 20))
+          render (fn [selected]
+                   (box (core/render-browse
+                         {:term-width 44 :term-height 24
+                          :nav-path "/tmp" :project-name (text-input/text-input :value "demo")
+                          :nav-items items :nav-idx selected})))
+          bottom (render 1)
+          both (render 10)
+          top (render 20)
+          directory-top (fn [lines]
+                          (nth lines (inc (first
+                                           (keep-indexed
+                                            (fn [index line]
+                                              (when (str/starts-with? line " ├") index))
+                                            lines)))))]
+      (is (apply = (map count [bottom both top])))
+      (is (blank? (directory-top bottom)))
+      (is (overflow? "↓" (last bottom)))
+      (is (overflow? "↑" (directory-top both)))
+      (is (overflow? "↓" (last both)))
+      (is (overflow? "↑" (directory-top top)))
+      (is (blank? (last top))))))
+
 (deftest active-resource-shows-its-url-below-the-global-column-gap
   (let [state (assoc (core/main-menu-state example-global-config)
                      :step :resources
@@ -595,14 +701,14 @@
     (is (str/includes? rendered "... ↗"))
     (is (str/includes? rendered "https://example.test"))
     (is (= (count " ╭──────────────────────────────────────────────╮")
-           (count (second (str/split-lines
-                           (core/strip-ansi
-                            (core/render-resource-list
-                             [{:label "A resource"
-                               :desc "A description that is too long for this narrow menu"}]
-                             0
-                             50
-                             1)))))))))
+           (count (nth (str/split-lines
+                        (core/strip-ansi
+                         (core/render-resource-list
+                          [{:label "A resource"
+                            :desc "A description that is too long for this narrow menu"}]
+                          0
+                          50
+                          1))) 2))))))
 
 (deftest new-project-opens-the-project-wizard-and-returns-to-main-menu
   (with-redefs [core/dev-success-sequence? false
@@ -676,10 +782,10 @@
           top-only (render 12 21)]
       (is (not (str/includes? (core/strip-ansi full-screen) " more")))
       (is (not (re-find #"↑ \d+ more" (core/strip-ansi bottom-only))))
-      (is (str/includes? bottom-only (style/secondary " ↓ 2 more")))
-      (is (str/includes? both-sides (style/secondary " ↑ 2 more")))
-      (is (str/includes? both-sides (style/secondary " ↓ 2 more")))
-      (is (str/includes? top-only (style/secondary " ↑ 4 more")))
+      (is (str/includes? bottom-only (style/secondary "  ↓ 2 more")))
+      (is (str/includes? both-sides (style/secondary "  ↑ 2 more")))
+      (is (str/includes? both-sides (style/secondary "  ↓ 2 more")))
+      (is (str/includes? top-only (style/secondary "  ↑ 4 more")))
       (is (not (re-find #"↓ \d+ more" (core/strip-ansi top-only))))
       (is (< (.indexOf both-sides "↑ 2 more")
              (.indexOf both-sides "Babashka")))
@@ -1028,8 +1134,8 @@
         plain (core/strip-ansi rendered)]
     (is (<= (count (str/split-lines plain)) height))
     (is (str/includes? plain "> dir-9/"))
-    (is (str/includes? rendered (style/secondary " ↑ 8 more")))
-    (is (str/includes? rendered (style/secondary " ↓ 14 more")))))
+    (is (str/includes? rendered (style/secondary "  ↑ 9 more")))
+    (is (str/includes? rendered (style/secondary "  ↓ 14 more")))))
 
 (deftest configured-home-relative-parent-dirs-resolve-before-confirmation
   (let [configured-parent "~/hooli/projects"
