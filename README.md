@@ -6,8 +6,8 @@
 <!-- # ◒ &nbsp;jus -->
 
 <h1>
-  <img src="resources/graphics/combomark-black.svg#gh-light-mode-only" width="90"></img>
-  <img src="resources/graphics/combomark-white.svg#gh-dark-mode-only" width="90"></img>
+  <img src="resources/graphics/jus-combomark-black.svg#gh-light-mode-only" width="75"></img>
+  <img src="resources/graphics/jus-combomark-white.svg#gh-dark-mode-only" width="75"></img>
 </h1>
 
 
