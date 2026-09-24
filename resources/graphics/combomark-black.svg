@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 280.73 112.23">
+  <defs>
+    <style>
+      .cls-1 {
+        fill: none;
+      }
+
+      .cls-2, .cls-3 {
+        fill: #231f20;
+      }
+
+      .cls-4 {
+        fill: #fff;
+      }
+
+      .cls-3 {
+        font-family: SFPro-MediumItalic, 'SF Pro';
+        font-size: 122.4px;
+        font-style: italic;
+        font-variation-settings: 'opsz' 28, 'YAXS' 436, 'wght' 508;
+        font-weight: 500;
+      }
+
+      .cls-5 {
+        clip-path: url(#clippath);
+      }
+    </style>
+    <clipPath id="clippath">
+      <circle class="cls-1" cx="46.11" cy="48.93" r="32.29"/>
+    </clipPath>
+  </defs>
+  <g id="Layer_4" data-name="Layer 4">
+    <g id="universal_logo" data-name="universal logo">
+      <g>
+        <path class="cls-2" d="M46.11,87.34c-21.18,0-38.41-17.23-38.41-38.41S24.93,10.52,46.11,10.52s38.41,17.23,38.41,38.41-17.23,38.41-38.41,38.41Z"/>
+        <path class="cls-4" d="M46.11,16.64c17.83,0,32.29,14.46,32.29,32.29s-14.46,32.29-32.29,32.29S13.82,66.76,13.82,48.93,28.28,16.64,46.11,16.64M46.11,4.4C21.56,4.4,1.58,24.37,1.58,48.93s19.98,44.53,44.53,44.53,44.53-19.98,44.53-44.53S70.67,4.4,46.11,4.4h0Z"/>
+      </g>
+      <g>
+        <path class="cls-2" d="M46.11,84.28c-19.49,0-35.35-15.86-35.35-35.35S26.62,13.58,46.11,13.58s35.35,15.86,35.35,35.35-15.86,35.35-35.35,35.35Z"/>
+        <path class="cls-2" d="M46.11,16.64c17.83,0,32.29,14.46,32.29,32.29s-14.46,32.29-32.29,32.29S13.82,66.76,13.82,48.93,28.28,16.64,46.11,16.64M46.11,10.52C24.93,10.52,7.7,27.75,7.7,48.93s17.23,38.41,38.41,38.41,38.41-17.23,38.41-38.41S67.29,10.52,46.11,10.52h0Z"/>
+      </g>
+      <g class="cls-5">
+        <path class="cls-4" d="M78.53,49.07s-14.62-13.67-32.66-.08c-18.03,13.58-32.12-.12-32.12-.12l-4.04-2.5S13.19,13.33,45.61,13.33s36.08,35.57,36.08,35.57"/>
+      </g>
+    </g>
+    <text id="jus_black" data-name="jus black" class="cls-3" transform="translate(128.87 89.11)"><tspan x="0" y="0">jus</tspan></text>
+  </g>
+</svg>

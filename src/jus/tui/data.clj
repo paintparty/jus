@@ -36,6 +36,12 @@
               {:label "APIs"
                :desc  "Official API Reference"
                :url   "https://clojure.org/api"}
+              {:label "APIs"
+               :desc  "Official API Reference"
+               :url   "https://clojure.org/api"}
+              {:label "Cheat Sheet"
+               :desc  "Official API Cheat Sheet"
+               :url   "https://clojure.org/api/cheatsheet"}
               {:label "Clojure Distilled"
                :desc  "Concise introduction to the language"
                :url   "https://yogthos.net/ClojureDistilled.html"}

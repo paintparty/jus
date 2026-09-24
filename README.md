@@ -3,7 +3,13 @@
 <!-- ### &#x262F;&#xFE0E;
 <h1><img height="50px" valign="center" align="left" src="resources/graphics/jus-logo-1.svg"> jus</h1> -->
 
-# ◒ &nbsp;jus
+<!-- # ◒ &nbsp;jus -->
+
+<h1>
+  <img src="resources/graphics/combomark-black.svg#gh-light-mode-only" width="90"></img>
+  <img src="resources/graphics/combomark-white.svg#gh-dark-mode-only" width="90"></img>
+</h1>
+
 
 **A TUI app for Clojure dialects.**
 
