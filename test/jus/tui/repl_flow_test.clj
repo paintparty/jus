@@ -95,8 +95,8 @@
          (screen-for 1)
          (str "  This will copy a local install snippet to your clipboard.\n"
               "  \n"
-              "  This will be a local install using in-1, a tool for installing\n"
-              "  things quickly and easily, with no prerequisites.")))
+              "  This will be a local install using in-1, a tool for installing things\n"
+              "  quickly and easily, with no prerequisites.")))
     (is (not (str/includes? (screen-for 1) "bash -c")))
     (is (str/includes? (screen-for 2)
                        "  https://github.com/glojurelang/glojure#prerequisites"))))
@@ -201,7 +201,7 @@
           rendered (#'render/visible-lines (core/view state) 49 24)
           plain (clean-screen rendered)]
       (is (str/includes? plain "local install using in-1, a"))
-      (is (str/includes? plain "  tool for installing\n"))
+      (is (str/includes? plain "  tool for installing things quickly"))
       (is (str/includes? rendered "\u001b[1;3mlocal\u001b[0m"))
       (is (str/includes? rendered "\u001b[4min-1\u001b[24m")))))
 

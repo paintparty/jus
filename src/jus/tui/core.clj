@@ -692,8 +692,7 @@
                         :mode :local
                         :command (repls/install-snippet runtime :local)
                         :helper (str "This will copy a ***local*** install snippet to your clipboard.\n\n"
-                                     "This will be a ***local*** install using [in-1](https://in-1.cc/), a tool for installing\n"
-                                     "things quickly and easily, with no prerequisites.")}]
+                                     "This will be a ***local*** install using [in-1](https://in-1.cc/), a tool for installing things quickly and easily, with no prerequisites.")}]
         guide-and-cancel [{:label (str "View " label " Install Guide") :url guide
                            :desc (str "Official " label " installation info")
                            :helper guide}
