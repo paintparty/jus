@@ -1,7 +1,9 @@
 (ns charm.render.core-test
   (:require [charm.render.core :as render]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
+            [clojure.test :refer [deftest is testing]]
+            [jus.tui.core :as core]
+            [jus.tui.style :as style])
   (:import [java.io ByteArrayInputStream ByteArrayOutputStream]
            [org.jline.terminal TerminalBuilder]))
 
@@ -23,6 +25,32 @@
     (render/render! renderer content)
     (.flush terminal)
     (String. (.toByteArray out))))
+
+(defn- visible-text
+  [s]
+  (-> s
+      core/strip-ansi
+      (str/replace #"\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)" "")))
+
+(deftest hyperlinks-survive-viewport-rendering
+  (with-redefs [style/hyperlinks-enabled? (constantly true)]
+    (let [about (core/view (assoc (core/main-menu-state {})
+                                  :step :about :term-width 78))
+          about-visible (#'render/visible-lines about 78 40)
+          helper (str/join "\n" (map #(str "  " %)
+                                     (style/helper-lines
+                                      "This will be a local install using [in-1](https://in-1.cc/install/#install-the-in-1-command), a tool for installing things quickly and easily, with no prerequisites."
+                                      45)))
+          helper-visible (#'render/visible-lines helper 49 24)]
+      (is (str/includes? (visible-text about-visible)
+                         "Built with Babashka + Charm + cljfmt."))
+      (is (str/includes? (visible-text about-visible)
+                         "https://github.com/paintparty/jus"))
+      (is (= 6 (count (re-seq #"\u001b\[4m" about-visible))))
+      (is (every? #(<= (count %) 78)
+                  (str/split-lines (visible-text about-visible))))
+      (is (str/includes? (visible-text helper-visible) "in-1, a\n  tool for installing"))
+      (is (str/includes? helper-visible "\u001b[4min-1\u001b[24m")))))
 
 (deftest render-clears-below-visible-content
   (testing "render! clears stale content without advancing past the final row"

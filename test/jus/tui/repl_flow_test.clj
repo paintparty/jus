@@ -3,6 +3,7 @@
             [clojure.test :refer [deftest is]]
             [charm.message :as msg]
             [charm.program :as program]
+            [charm.render.core :as render]
             [charm.render.screen :as screen]
             [jus.tui.core :as core]
             [jus.tui.repls :as repls]
@@ -193,6 +194,16 @@
           (is (str/includes? screen "\u001b]8;;https://github.com/glojurelang/glojure#prerequisites"))))))
   (let [state (assoc (selected) :menu-idx 11 :term-height 16)]
     (is (not (str/includes? (core/view state) "Phel")))))
+
+(deftest narrow-repl-install-keeps-linked-and-emphasized-text
+  (with-redefs [style/hyperlinks-enabled? (constantly true)]
+    (let [state (assoc (missing-menu) :term-width 49 :term-height 24 :menu-idx 1)
+          rendered (#'render/visible-lines (core/view state) 49 24)
+          plain (clean-screen rendered)]
+      (is (str/includes? plain "local install using in-1, a"))
+      (is (str/includes? plain "  tool for installing\n"))
+      (is (str/includes? rendered "\u001b[1;3mlocal\u001b[0m"))
+      (is (str/includes? rendered "\u001b[4min-1\u001b[24m")))))
 
 (deftest helper-links-have-readable-fallback
   (with-redefs [style/hyperlinks-enabled? (constantly true)]
