@@ -4,6 +4,8 @@
 ## 0.3.0
 
 ### Changed
+- Add padding block + inline padding start to all menu lists by default. [#26](https://github.com/paintparty/jus/issues/26)
+- Add official clj Cheatsheat [#25](https://github.com/paintparty/jus/issues/25)
 - Bump deps-new to `0.14.1`. Minimum bb version for generated projects is `1.13.222`. [#24](https://github.com/paintparty/jus/issues/24)
 - Extract the interactive Babashka task picker into the independently installable `bbtl` application. [#22](https://github.com/paintparty/jus/issues/23)
 - Show composite path for new project location below menu list [#22](https://github.com/paintparty/jus/issues/22)
@@ -13,6 +15,8 @@
 - Navigate user back to just after repl session [#17](https://github.com/paintparty/jus/issues/17)
 - Hand off missing REPL installation to copyable in-1 snippets instead of running the installer inside jus.
 - Add more dialects with in-1 installer [#21](https://github.com/paintparty/jus/issues/21)
+- Add `--version` option [#14](https://github.com/paintparty/jus/issues/14)
+- Fix "down more / up more" scrolling [#13](https://github.com/paintparty/jus/issues/14)
 
 
 ## 0.2.0
