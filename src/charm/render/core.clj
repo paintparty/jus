@@ -12,7 +12,8 @@
   (:require [charm.render.screen :as scr]
             [charm.terminal :as term]
             [clojure.string :as str])
-  (:import [org.jline.terminal Terminal]))
+  (:import [org.jline.terminal Terminal]
+           [org.jline.utils AttributedString]))
 
 (defn create-renderer
   "Create a renderer compatible with charm.program."
@@ -100,10 +101,33 @@
 (defn copy-to-clipboard! [renderer text]
   (write-terminal! renderer (scr/copy-to-clipboard text)))
 
+(def ^:private rendered-token-pattern
+  #"\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)|\u001b\[[0-?]*[ -/]*[@-~]|\X")
+
+(defn- truncate-styled-line
+  "Fit a rendered line by terminal cells without counting ANSI or OSC-8 bytes."
+  [line width]
+  (loop [tokens (re-seq rendered-token-pattern line)
+         cells 0
+         result (StringBuilder.)
+         escaped? false]
+    (if-let [token (first tokens)]
+      (let [escape? (= \u001b (first token))
+            token-width (if escape?
+                          0
+                          (.columnLength (AttributedString. token)))]
+        (if (> (+ cells token-width) width)
+          (str result (when escaped? "\u001b[0m\u001b]8;;\u001b\\"))
+          (recur (next tokens)
+                 (+ cells token-width)
+                 (.append result token)
+                 (or escaped? escape?))))
+      (str result))))
+
 (defn- visible-lines
   [content width height]
   (let [content (if (empty? content) " " content)
-        lines   (mapv #(scr/truncate-line % width) (scr/content->lines content))
+        lines   (mapv #(truncate-styled-line % width) (scr/content->lines content))
         lines   (if (and (pos? height) (> (count lines) height))
                   (subvec lines (- (count lines) height))
                   lines)]

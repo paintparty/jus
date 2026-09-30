@@ -27,6 +27,10 @@
         false))))
 (def linux? (target-os? "linux"))
 (def mac? (target-os? "mac"))
+(def intel-mac?
+  (and mac?
+       (contains? #{"x86_64" "amd64"}
+                  (str/lower-case (System/getProperty "os.arch" "")))))
 (def not-mac? (not mac?))
 
 ;; Logo
@@ -84,6 +88,14 @@
 (defn italic
   [s]
   (charm-style/render italic-style s))
+
+(defn bold-italic
+  [s]
+  (sgr "1;3" s))
+
+(defn bold
+  [s]
+  (sgr "1" s))
 
 (defn secondary
   "Secondary text. Uses a neutral medium gray."
@@ -150,3 +162,78 @@
   (if no-color?
     (primary s)
     (charm-style/render (charm-style/style :fg accent-hex :bold true) s)))
+
+(defn hyperlinks-enabled-for-environment?
+  "Whether a terminal environment should receive OSC-8 hyperlinks.
+   NO_COLOR controls color styling, not link capabilities."
+  [environment]
+  (not= "dumb" (get environment "TERM")))
+
+(defn hyperlinks-enabled?
+  []
+  (hyperlinks-enabled-for-environment? (System/getenv)))
+
+(defn- osc-8-hyperlink
+  [label url]
+  (str "\033]8;;" url "\033\\"
+       "\033[4m" label "\033[24m"
+       "\033]8;;\033\\"))
+
+(defn hyperlink-for-environment
+  [label url environment]
+  (if (hyperlinks-enabled-for-environment? environment)
+    (osc-8-hyperlink label url)
+    label))
+
+(defn hyperlink
+  [label url]
+  (if (hyperlinks-enabled?)
+    (osc-8-hyperlink label url)
+    label))
+
+(defn helper-lines
+  "Wrap helper text by visible width, preserving authored lines and rendering links."
+  [text width]
+  (let [width (max 1 width)
+        wrap-line
+        (fn [line]
+          (let [tokens (re-seq #"\*\*\*([^*]+)\*\*\*|\*\*([^*]+)\*\*|\[([^\]]+)\]\((https?://[^\s)]+)\)([.,;:!?]?)|([^\s]+)" line)
+                words (mapcat
+                       (fn [[_ emphasized bold-text label url punctuation plain]]
+                         (let [source (or emphasized bold-text label plain)
+                               link-url (or url
+                                            (when (and plain
+                                                       (re-matches #"https?://[^\s]+" plain))
+                                              plain))
+                               emphasized? (some? emphasized)
+                               bold? (some? bold-text)
+                               pieces (vec
+                                       (for [word (str/split source #"\s+")
+                                             piece (partition-all width (str/replace word "`" ""))]
+                                         (apply str piece)))]
+                           (map-indexed
+                            (fn [index piece]
+                              {:text piece
+                               :url link-url
+                               :emphasized? emphasized?
+                               :bold? bold?
+                               :suffix (if (= index (dec (count pieces))) punctuation "")})
+                            pieces))) tokens)]
+            (:lines
+             (reduce (fn [{:keys [lines column]} {:keys [text url emphasized? bold? suffix]}]
+                       (let [visible-text (str text suffix)
+                             new-line? (> (+ column (if (pos? column) 1 0)
+                                             (count visible-text)) width)
+                             gap (if (or new-line? (zero? column)) "" " ")
+                             rendered (str gap (cond
+                                                 url (hyperlink text url)
+                                                 emphasized? (bold-italic text)
+                                                 bold? (bold text)
+                                                 :else text)
+                                           suffix)]
+                         {:lines (if new-line? (conj lines rendered)
+                                     (update lines (dec (count lines)) str rendered))
+                          :column (+ (if new-line? 0 column)
+                                     (count gap) (count visible-text))}))
+                     {:lines [""] :column 0} words))))]
+    (vec (mapcat wrap-line (str/split (str text) #"\n" -1)))))

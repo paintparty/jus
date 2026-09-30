@@ -3,17 +3,23 @@
 <!-- ### &#x262F;&#xFE0E;
 <h1><img height="50px" valign="center" align="left" src="resources/graphics/jus-logo-1.svg"> jus</h1> -->
 
-# ◒ &nbsp;jus
+<!-- # ◒ &nbsp;jus -->
+
+<h1>
+  <img src="resources/graphics/jus-combomark-bold-black.svg#gh-light-mode-only" width="75"></img>
+  <img src="resources/graphics/jus-combomark-bold-white.svg#gh-dark-mode-only" width="75"></img>
+</h1>
+
 
 **A TUI app for Clojure dialects.**
 
 <br>
 
-Scaffold new projects, run tasks, launch REPLs, and explore community resources.
+Scaffold new projects, launch REPLs, and explore community resources.
 
 <br>
 
-Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj), with help from [rewrite-clj](https://github.com/clj-commons/rewrite-clj) + [cljfmt](https://github.com/weavejester/cljfmt). 
+Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj), with help from [cljfmt](https://github.com/weavejester/cljfmt).
 
 Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new).
 
@@ -27,15 +33,6 @@ Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new
 <br>
 
 ## Features
-
-• &nbsp;  **Select and run bb tasks:**
-
-<p align="center">
-  <img src="resources/screens/motion/jus-tasks_light-mode.gif#gh-light-mode-only"></img>
-  <img src="resources/screens/motion/jus-tasks_dark-mode.gif#gh-dark-mode-only"></img>
-</p>
-
-<br>
 
 • &nbsp;  **Launch the ***New Project Wizard*** to scaffold a new Clojure [deps.edn](https://clojure.org/reference/deps_edn) project. More project types coming soon.**
 
@@ -73,9 +70,8 @@ Early days.
 ## Requirements
 [Java](https://clojure.org/guides/install_clojure#java) <br>
 [Clojure](https://clojure.org/guides/install_clojure) <br>
-[Babashka`v1.13.219`](https://github.com/babashka/babashka#installation) <br>
+[Babashka`v1.13.222`](https://github.com/babashka/babashka#installation) <br>
 [bbin](https://github.com/babashka/bbin)
-
 <br>
 
 ## Installation
@@ -86,7 +82,7 @@ You can install jus via `in-1` or `bbin`
 
 [in-1](https://in-1.cc) is a very simple way to install lots of things quickly and with no prerequisites.
 
-> Note: `in-1` works for Bash, Zah and Fish. See [the install page](https://in-1.cc/install/) specifics.
+> Note: `in-1` works for Bash, Zsh and Fish. See [the install page](https://in-1.cc/install/) specifics.
 
 To try `jus` without installing it permanently, just run:
 
@@ -135,14 +131,7 @@ jus
 ```
 <br>
 
-If your project has a `bb.edn` file with `tasks` defined, you can interactively browse and select tasks:
-```
-jus tasks
-```
-Shorthand for `jus tasks`
-```
-jus t
-```
+For running tasks in projects that contain a `bb.edn`, check out [bbtl](https://github.com/paintparty/bbtl).
 
 <br>
 

@@ -84,3 +84,15 @@
     (with-redefs [launch/cljs-output-dir (constantly cache-directory)]
       (launch/runtime-command :clojurescript "/tmp/project")
       (is (not (.exists (java.io.File. cache-directory)))))))
+
+(deftest new-dialects-launch-without-a-spinner
+  (let [executed (atom nil)]
+    (with-redefs-fn {#'launch/exec-process! (fn [environment command]
+                                              (reset! executed [environment command]))
+                     #'launch/start-spinner! (fn [& _] (throw (Exception. "unexpected spinner")))}
+      #(doseq [[runtime expected] launch/native-runtimes]
+         (launch/launch! runtime)
+         (is (= [{} expected] @executed))
+         (launch/launch! runtime "/a path/bin/runtime")
+         (is (= (assoc expected 0 "/a path/bin/runtime") (second @executed)))
+         (is (str/starts-with? (get (first @executed) "PATH") "/a path/bin:"))))))

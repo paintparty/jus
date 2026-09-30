@@ -2,8 +2,7 @@
  :deps     {dev.weavejester/cljfmt  {:mvn/version "0.16.4"}
             de.timokramer/charm.clj {:mvn/version "0.2.74"}
             babashka/fs             {:mvn/version "0.5.34"}
-            babashka/process        {:mvn/version "0.6.25"}
-            rewrite-clj/rewrite-clj {:mvn/version "1.1.49"}}
+            babashka/process        {:mvn/version "0.6.25"}}
  :bbin/bin {jus {:main-opts ["-m" "jus.tui.core"]}}
  :tasks    {jus                 {:doc  "Launch the jus TUI"
                                  :task (do (require '[jus.tui.core])
@@ -15,10 +14,12 @@
                                  :task (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "integration")}
             test                {:doc  "Unit + integration tests. Run before merging."
                                  :task (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "all")}
-            test:e2e            {:doc  "Run terminal and REPL handoff tests. Run when changing terminal behavior, REPL handoff, process replacement, or runtime startup. E2e test suite uses real runtimes and PTYs, so it is slower and environment-dependent."
-                                 :task (shell "scripts/repl-handoff-spike.exp")}
+            test:e2e            {:doc  "Run terminal clipboard and REPL handoff tests. Run when changing terminal behavior, installation handoff, REPL handoff, process replacement, or runtime startup. E2e test suite uses real runtimes and PTYs, so it is slower and environment-dependent."
+                                 :task (do (shell "scripts/repl-install-handoff-smoke.exp")
+                                           (shell "scripts/repl-handoff-spike.exp"))}
             test:all            {:doc  "Unit + integration tests + e2e tests. Run before release."
                                  :task (do (shell "clojure" "-M:test" "-m" "jus.tui.test-runner" "all")
+                                           (shell "scripts/repl-install-handoff-smoke.exp")
                                            (shell "scripts/repl-handoff-spike.exp"))}
             install:jus-local   {:doc  "Installs this local checkout under the dev-safe command name `jus-local`. Runs `bbin install . --as jus-local`"
                                  :task (shell "bbin" "install" "." "--as" "jus-local")}

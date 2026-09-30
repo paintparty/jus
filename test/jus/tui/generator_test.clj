@@ -29,8 +29,8 @@
     (is (= ["clojure" "-Srepro" "-X:jus/generate"] command))
     (is (not-any? #(str/includes? % "\"") command))
     (is (= '{io.github.seancorfield/deps-new
-             {:git/tag "v0.12.2"
-              :git/sha "465b303"}}
+             {:git/tag "v0.14.1"
+              :git/sha "39d257c"}}
            (:deps config-data)))
     (is (= 'org.corfield.new/lib
            (get-in config-data [:aliases :jus/generate :exec-fn])))
@@ -117,8 +117,9 @@
         (is (str/includes? (:out result) "Creating project from"))
         (is target)
         (is bb-edn)
-        (is (str/includes? bb-content ":requires [[clojure.string :as str]]"))
-        (is (not (str/includes? bb-content ":require [[")))
+        (is (str/includes? bb-content ":min-bb-version \"1.13.222\""))
+        (is (str/includes? bb-content ":requires [build]"))
+        (is (not (re-find #"(?m)^\s*:require\s" bb-content)))
         (is source)))))
 
 (deftest project-rooted-options-create-a-project-rooted-source-namespace

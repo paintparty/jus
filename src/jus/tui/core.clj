@@ -2,22 +2,34 @@
   (:require [charm.program :as program]
             [charm.message :as msg]
             [charm.components.text-input :as text-input]
+            [charm.render.screen :as screen]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [babashka.fs :as fs]
             [jus.tui.animation :as animation]
             [jus.tui.config :as config]
+            [jus.tui.content :as content]
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
+            [jus.tui.menu :as menu]
             [jus.tui.repls :as repls]
-            [jus.tui.style :as style :refer [error-prefix]]
-            [jus.tui.tasks :as tasks])
+            [jus.tui.style :as style :refer [error-prefix]])
   (:import (java.lang ProcessBuilder$Redirect)
            (java.nio.file Files LinkOption)))
 
 (def project-created-at "  ✓ Project created at ")
 
 (def project-created "  ✓ Project created")
+
+(def version
+  "The current jus release version."
+  "0.3.0")
+
+(def bbtl-url "https://github.com/paintparty/bbtl")
+
+(def deps-new-version
+  "The git tag of the deps-new coordinate used by project generation."
+  (get-in generator/deps-new-coordinate ['io.github.seancorfield/deps-new :git/tag]))
 
 (def open-in-browser-icon (if @style/windows-10? ">" "↗"))
 
@@ -31,14 +43,13 @@
   "Number of spaces between columns in menu rows."
   3)
 
-
 (defn- main-menu-logo-prefix
   []
   (str (apply str (repeat (:row style/main-menu-logo-position) "\n"))
        (apply str (repeat (:column style/main-menu-logo-position) " "))))
 
 (def main-menu-logo
-  (str style/logo 
+  (str style/logo
        " "
        (style/italic "jus")))
 
@@ -56,11 +67,6 @@
   "Controls the progress indicator for normal wizard steps.
    :bar uses the full-width progress bar; :stars uses a compact 12-star line."
   :bar)
-
-(def max-browse-rows
-  "Max number of directory rows shown in the bottom section
-   of the browse-mode location picker before scrolling kicks in."
-  10)
 
 (def default-licenses
   ["EPL-2.0"
@@ -89,13 +95,16 @@
                         :nav-label l})
    :resources        (let [l "Explore Community Resources"]
                        {:label     l
-                        :nav-label "Community Resources"})})
+                        :nav-label "Community Resources"})
+   :about            (let [l "About"]
+                       {:label     l
+                        :nav-label l})})
 
 (defn main-menu-choices []
   (vec (concat
         (when dev-success-sequence? [:success-sequence])
         (when dev-opening-sequence? [:opening-sequence])
-        [:wizard :repl :resources])))
+        [:wizard :repl :resources :about])))
 
 (defn main-menu-items []
   (mapv #(get-in main-menu-items* [% :label]) (main-menu-choices)))
@@ -159,8 +168,7 @@
   (if (zero? (:template-idx state))
     "Library name"
     "Project name"))
-                                                                                                            
-                                                                                                            
+
 ;;     SSSSSSSSSSSSSSS TTTTTTTTTTTTTTTTTTTTTTT         AAA         TTTTTTTTTTTTTTTTTTTTTTTEEEEEEEEEEEEEEEEEEEEEE
 ;;   SS:::::::::::::::ST:::::::::::::::::::::T        A:::A        T:::::::::::::::::::::TE::::::::::::::::::::E
 ;;  S:::::SSSSSS::::::ST:::::::::::::::::::::T       A:::::A       T:::::::::::::::::::::TE::::::::::::::::::::E
@@ -177,8 +185,6 @@
 ;;  S::::::SSSSSS:::::S      T:::::::::T  A:::::A               A:::::A  T:::::::::T      E::::::::::::::::::::E
 ;;  S:::::::::::::::SS       T:::::::::T A:::::A                 A:::::A T:::::::::T      E::::::::::::::::::::E
 ;;   SSSSSSSSSSSSSSS         TTTTTTTTTTTAAAAAAA                   AAAAAAATTTTTTTTTTT      EEEEEEEEEEEEEEEEEEEEEE
-                                                                                                            
-                                                                                                            
 
 (defn project-wizard-state
   "Returns a fresh Project wizard state from a loaded Global config."
@@ -235,6 +241,9 @@
 
 (defn- menu-screen? [step]
   (boolean (some #{step} [:main-menu :repl-menu :resources])))
+
+(def about-content
+  (str "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new) " deps-new-version ".\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty"))
 
 (defn- resource-items [state]
   (or (peek (:resource-stack state)) data/community-resources))
@@ -417,16 +426,16 @@
       (str/replace "." "/")))
 
 (defn source-layout-items
-  "Return source namespace choices with previews for the current identity."
+  "Return source namespace choices with path descriptions for the current identity."
   [state]
   (let [project-name (text-input/value (:project-name state))
         group-name   (selected-group-name state)
         rooted-ns    (str project-name ".core")
         default-ns   (str (or group-name project-name) "." project-name)]
-    [{:label   "Project-rooted (Recommended)"
-      :preview (str "src/" (namespace-path rooted-ns) ".clj")}
-     {:label   "Group-derived"
-      :preview (str "src/" (namespace-path default-ns) ".clj")}]))
+    [{:label "Project-rooted (Recommended)"
+      :desc  (str "src/" (namespace-path rooted-ns) ".clj")}
+     {:label "Group-derived"
+      :desc  (str "src/" (namespace-path default-ns) ".clj")}]))
 
 (defn output-path
   "Absolute path where the project will be created."
@@ -483,7 +492,7 @@
          {:type  :config-creation-complete
           :error error})))))
 
-(def loading-spinner-frames 
+(def loading-spinner-frames
   (let [logo-with-trailing-space (str style/logo " ")]
     [logo-with-trailing-space
      (style/secondary logo-with-trailing-space)
@@ -623,7 +632,6 @@
     (catch Exception _
       false)))
 
-                                                                                                                                 
 ;; UUUUUUUU     UUUUUUUUPPPPPPPPPPPPPPPPP   DDDDDDDDDDDDD                  AAA         TTTTTTTTTTTTTTTTTTTTTTTEEEEEEEEEEEEEEEEEEEEEE
 ;; U::::::U     U::::::UP::::::::::::::::P  D::::::::::::DDD              A:::A        T:::::::::::::::::::::TE::::::::::::::::::::E
 ;; U::::::U     U::::::UP::::::PPPPPP:::::P D:::::::::::::::DD           A:::::A       T:::::::::::::::::::::TE::::::::::::::::::::E
@@ -640,8 +648,105 @@
 ;;   UU:::::::::::::UU  P::::::::P          D:::::::::::::::DDA:::::A               A:::::A  T:::::::::T      E::::::::::::::::::::E
 ;;     UU:::::::::UU    P::::::::P          D::::::::::::DDD A:::::A                 A:::::A T:::::::::T      E::::::::::::::::::::E
 ;;       UUUUUUUUU      PPPPPPPPPP          DDDDDDDDDDDDD   AAAAAAA                   AAAAAAATTTTTTTTTTT      EEEEEEEEEEEEEEEEEEEEEE
-                                                                                                                                 
-                                                                                                                                 
+
+(defn- repl-install-copy-confirmation-lines
+  [label mode command width]
+  (let [mode-label (case mode :temporary "temp" :local "local")
+        confirmation (style/helper-lines
+                      (str "✓ Copied to clipboard: " label " in-1 " mode-label
+                           " install command.")
+                      width)]
+    (concat
+     (map-indexed (fn [index line]
+                    (if (zero? index)
+                      (str/replace-first line "✓ Copied to clipboard"
+                                         (style/primary "✓ Copied to clipboard"))
+                      line))
+                  confirmation)
+     [""]
+     (style/helper-lines "Open a fresh terminal tab and paste." width)
+     [""]
+     (style/helper-lines "If clipboard access is blocked, copy this manually:" width)
+     [command]
+     [""]
+     (style/helper-lines "Install in-1 for Bash/Zsh:" width)
+     ["source <(curl -sL in-1.cc) in-1"]
+     [""]
+     (style/helper-lines "Install in-1 for Fish:" width)
+     ["curl -sL in-1.cc | source - in-1"]
+     [""]
+     (style/helper-lines "in-1 info: [https://in-1.cc/](https://in-1.cc/)" width))))
+
+(defn- repl-install-items
+  [runtime]
+  (let [{:keys [label guide]} (repls/option runtime)
+        install-items [{:label (str label " temporary install & launch")
+                        :desc "Copy in-1 command to clipboard"
+                        :mode :temporary
+                        :command (repls/install-snippet runtime :temporary)
+                        :helper (str "This will copy a **temporary** install snippet to your clipboard.\n\n"
+                                     "This will be a **temporary** install using [in-1](https://in-1.cc/), a tool for installing things quickly and easily, with no prerequisites.")}
+                       {:label (str label " local install & launch")
+                        :desc "Copy in-1 command to clipboard"
+                        :mode :local
+                        :command (repls/install-snippet runtime :local)
+                        :helper (str "This will copy a **local** install snippet to your clipboard.\n\n"
+                                     "This will be a **local** install using [in-1](https://in-1.cc/), a tool for installing things quickly and easily, with no prerequisites.")}]
+        guide-and-cancel [{:label (str "View " label " Install Guide") :url guide
+                           :desc (str "Official " label " installation info")
+                           :helper guide}
+                          {:label "Cancel" :desc "Returns to previous REPL dialects menu"
+                           :helper "Return to the REPL dialects menu."}]]
+    (into (if (repls/in-1-installation-supported? runtime) install-items [])
+          guide-and-cancel)))
+
+(defn- return-to-repls
+  [state]
+  (-> state
+      (assoc :step :repl-menu :menu-idx (or (:repl-menu-idx state) 0)
+             :error nil :action nil)
+      (dissoc :repl-install-copy-mode :repl-executable)))
+
+(defn- copy-to-clipboard-cmd
+  [mode text]
+  (program/cmd
+   (fn []
+     (print (screen/copy-to-clipboard text))
+     (flush)
+     {:type :repl-install-copy-complete :mode mode})))
+
+(defn- update-repl-install
+  [state message]
+  (let [ctrl-c? (msg/key-match? message "ctrl+c")
+        escape? (msg/key-match? message :escape)]
+    (cond
+      ctrl-c? [(assoc state :exit-code 130 :done? true) program/quit-cmd]
+      escape? [(return-to-repls state) nil]
+      (= :repl-install-copy-complete (:type message))
+      (let [selected-mode (:mode (nth (repl-install-items (:repl-id state))
+                                      (:menu-idx state)))]
+        [(cond-> state
+           (= selected-mode (:mode message))
+           (assoc :repl-install-copy-mode (:mode message) :error nil)) nil])
+      (msg/key-match? message "enter")
+      (let [{:keys [mode url command]}
+            (nth (repl-install-items (:repl-id state)) (:menu-idx state))]
+        (cond
+          mode [state (copy-to-clipboard-cmd mode command)]
+          url (if (open-url! url) [state nil]
+                  [(assoc state :error
+                          (str "Unable to open " url ". Open it manually in your browser.")) nil])
+          :else [(return-to-repls state) nil]))
+      (or (msg/key-match? message :up) (msg/key-match? message "k"))
+      [(-> state
+           (update :menu-idx #(max 0 (dec %)))
+           (dissoc :repl-install-copy-mode :error)) nil]
+      (or (msg/key-match? message :down) (msg/key-match? message "j"))
+      [(-> state
+           (update :menu-idx #(min (dec (count (repl-install-items (:repl-id state))))
+                                   (inc %)))
+           (dissoc :repl-install-copy-mode :error)) nil]
+      :else [state nil])))
 
 (defn update-fn
   "Charm.clj update. Dispatches on animation state, then wizard step."
@@ -650,6 +755,9 @@
     ;; Keep viewport dimensions current during every background phase.
     (msg/window-size? msg)
     [(animation/resize-state state msg) nil]
+
+    (= :repl-install-menu (:step state))
+    (update-repl-install state msg)
 
     ;; Opening inward confetti → header reveal → full main menu.
     (:opening-animation state)
@@ -840,20 +948,31 @@
                   :resource-selection-stack []
                   :error nil) nil]
 
+          :about
+          [(assoc state :step :about :error nil) nil]
+
           [state nil])
 
         :repl-menu
-        (let [runtime (nth repls/options (:menu-idx state) nil)]
-          (if runtime
-            (if-let [missing (some #(when-not (executable-available? %) %)
-                                   (:requires runtime))]
-              [(assoc state :error (repls/missing-executable-message missing)) nil]
-              [(assoc state
-                      :repl-id (:id runtime)
-                      :action :repl
-                      :error nil)
-               program/quit-cmd])
-            [state nil]))
+        (let [runtime (nth (repls/available-options) (:menu-idx state) nil)]
+          (if-not runtime
+            [state nil]
+            (if (and (:installer runtime)
+                     (:install-with-in-1? runtime)
+                     (repls/installation-supported?))
+              (try
+                (let [selected (assoc state :repl-id (:id runtime)
+                                      :repl-menu-idx (:menu-idx state) :error nil)]
+                  (if-let [executable (repls/discover (:id runtime))]
+                    [(assoc selected :repl-executable executable :action :repl) program/quit-cmd]
+                    [(assoc selected :step :repl-install-menu :menu-idx 0) nil]))
+                (catch Exception e
+                  [(assoc state :error (.getMessage e)) nil]))
+              (if-let [missing (some #(when-not (executable-available? %) %) (:requires runtime))]
+                [(assoc state :error (repls/missing-executable-message missing)) nil]
+                [(assoc state :repl-id (:id runtime)
+                        :repl-menu-idx (:menu-idx state)
+                        :action :repl :error nil) program/quit-cmd]))))
 
         :resources
         (let [{:keys [entries url label menu-label]} (nth (resource-items state)
@@ -872,8 +991,8 @@
             (and url (open-url! url)) [state nil]
 
             :else
-            [(assoc state :error (str "Unable to open " url)
-                    ". Open it manually in your browser.") nil]))
+            [(assoc state :error
+                    (str "Unable to open " url ". Open it manually in your browser.")) nil]))
 
         [state nil])
 
@@ -888,7 +1007,7 @@
                (msg/key-match? msg "j")))
       (let [limit (case (:step state)
                     :main-menu (dec (count (main-menu-items)))
-                    :repl-menu (dec (count repls/options))
+                    :repl-menu (dec (count (repls/available-options)))
                     :resources (dec (count (resource-items state)))
                     0)]
         [(cond-> (update state :menu-idx #(min limit (inc (or % 0))))
@@ -896,6 +1015,13 @@
 
       :else
       [state nil])
+
+    ;; Read-only screens return to the main menu without participating in menu navigation.
+    (= :about (:step state))
+    (cond
+      (msg/key-match? msg "ctrl+c") [state program/quit-cmd]
+      (msg/key-match? msg :escape) [(assoc state :step :main-menu :menu-idx 0 :error nil) nil]
+      :else [state nil])
 
     ;; Global Ctrl-C exits wizard steps that did not handle it earlier.
     (msg/key-match? msg "ctrl+c")
@@ -1105,23 +1231,9 @@
 
           :path-confirm
       ;; Selection model: idx 0 = top section (confirm), idx 1..n = nav items.
-      ;; :browse-offset scrolls the visible window of nav items.
           (let [items   (or (:nav-items state) [])
                 sel-idx (:nav-idx state)
-                offset  (or (:browse-offset state) 0)
-                max-idx (count items)
-            ;; Adjust offset so that bottom-section selected item stays visible.
-                adjust-offset
-                (fn [new-sel]
-                  (cond
-              ;; Top section selected. Leave window where it was.
-                    (zero? new-sel) offset
-                    :else
-                    (let [item-i (dec new-sel)]
-                      (cond
-                        (< item-i offset)                       item-i
-                        (>= item-i (+ offset max-browse-rows))  (- item-i (dec max-browse-rows))
-                        :else                                    offset))))]
+                max-idx (count items)]
             (cond
               (msg/key-match? msg "enter")
               (if (zero? sel-idx)
@@ -1135,21 +1247,18 @@
                             :nav-path      new-path
                             :nav-items     (build-browse-items new-path)
                             :nav-idx       (initial-browse-idx new-path)
-                            :browse-offset 0
                             :error         nil) nil]
                     [state nil])))
 
               (msg/key-match? msg :up)
               (let [new-sel (max 0 (dec sel-idx))]
                 [(assoc state
-                        :nav-idx       new-sel
-                        :browse-offset (adjust-offset new-sel)) nil])
+                        :nav-idx new-sel) nil])
 
               (msg/key-match? msg :down)
               (let [new-sel (min max-idx (inc sel-idx))]
                 [(assoc state
-                        :nav-idx       new-sel
-                        :browse-offset (adjust-offset new-sel)) nil])
+                        :nav-idx new-sel) nil])
 
               :else [state nil]))
 
@@ -1306,6 +1415,18 @@
      (style/secondary (str "│" inner "│"))
      (style/secondary (str "╰" h-bar "╯"))]))
 
+(defn- menu-blank-row [inner-w]
+  (str " " (style/secondary "│")
+       (apply str (repeat (max 0 inner-w) " "))
+       (style/secondary "│")))
+
+(defn- menu-window-rows [window inner-w]
+  (concat (when (zero? (:hidden-above window))
+            [(menu-blank-row inner-w)])
+          (:lines window)
+          (when (zero? (:hidden-below window))
+            [(menu-blank-row inner-w)])))
+
 (defn render-toggle
   "Vertical YES/NO list with full-width bordered box; selected item is emphasized."
   [on? term-width]
@@ -1313,8 +1434,8 @@
         h-bar    (apply str (repeat inner-w "─"))
         top      (str " " (style/secondary (str "╭" h-bar "╮")))
         bot      (str " " (style/secondary (str "╰" h-bar "╯")))
-        yes-str  (if on? " > Yes" "   Yes")
-        no-str   (if on? "   No" " > No")
+        yes-str  (if on? "  > Yes" "    Yes")
+        no-str   (if on? "    No" "  > No")
         yes-pad  (apply str (repeat (max 0 (- inner-w (count yes-str))) " "))
         no-pad   (apply str (repeat (max 0 (- inner-w (count no-str))) " "))
         yes-line (str " "
@@ -1327,7 +1448,8 @@
                       (if on? no-str (style/primary no-str))
                       no-pad
                       (style/secondary "│"))]
-    (str top "\n" yes-line "\n" no-line "\n" bot)))
+    (str/join "\n" [top (menu-blank-row inner-w) yes-line no-line
+                    (menu-blank-row inner-w) bot])))
 
 (defn item-label [x]
   (cond
@@ -1335,10 +1457,25 @@
     :else         (str x)
     :else         (str x)))
 
+(defn- render-menu-overflow-row
+  [inner-w arrow hidden]
+  (let [content (str "  " arrow " " hidden " more")]
+    (str " " (style/sgr "2" "│")
+         (style/secondary content)
+         (apply str (repeat (max 0 (- inner-w (count content))) " "))
+         (style/sgr "2" "│"))))
+
+(defn- menu-row-capacity
+  ([state] (menu-row-capacity state 0))
+  ([state additional-reserved-lines]
+   (max 1 (- (or (:term-height state) 24)
+             12
+             additional-reserved-lines))))
+
 (defn render-list
   "Navigable bordered list; selected item uses primary emphasis.
    Items may be strings/keywords or maps with :label and optional :type."
-  [items selected-idx term-width]
+  [items selected-idx term-width capacity]
   (let [inner-w   (- term-width 4)
         h-bar     (apply str (repeat (max 0 inner-w) "─"))
         top       (str " " (style/secondary (str "╭" h-bar "╮")))
@@ -1361,11 +1498,12 @@
                                preview)
                           label))
                       (item-label x)))
-        rows      (map-indexed
-                   (fn [i item]
-                     (let [selected? (= i selected-idx)
+        window    (menu/render-window
+                   items selected-idx capacity (+ capacity 2)
+                   (fn [index item]
+                     (let [selected? (= index selected-idx)
                            confirm?  (and (map? item) (= :confirm (:type item)))
-                           prefix    (if selected? " > " "   ")
+                           prefix    (if selected? "  > " "    ")
                            text      (str prefix (item-text item))
                            pad       (apply str (repeat (max 0 (- inner-w (count text))) " "))
                            style-fn  (cond selected? style/primary
@@ -1376,21 +1514,22 @@
                             (style-fn text)
                             pad
                             (style/secondary "│"))))
-                   items)]
-    (str/join "\n" (concat [top] rows [bot]))))
+                   (partial render-menu-overflow-row inner-w))]
+    (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot]))))
 
 (defn render-resource-list
   "Render resource labels and descriptions in two columns, without URLs."
-  [items selected-idx term-width]
+  [items selected-idx term-width capacity]
   (let [inner-w  (- term-width 4)
         label-w  (apply max 0 (map #(count (:label %)) items))
         h-bar    (apply str (repeat (max 0 inner-w) "─"))
         top      (str " " (style/secondary (str "╭" h-bar "╮")))
         bot      (str " " (style/secondary (str "╰" h-bar "╯")))
-        rows     (map-indexed
+        window   (menu/render-window
+                  items selected-idx capacity (+ capacity 2)
                   (fn [index {:keys [label desc url]}]
                     (let [selected? (= index selected-idx)
-                          prefix    (if selected? " > " "   ")
+                          prefix    (if selected? "  > " "    ")
                           suffix    (if (and selected? url)
                                       open-in-browser-suffix
                                       "")
@@ -1399,17 +1538,9 @@
                                             (if url 3 0)))
                           desc      (let [description (str (or desc ""))]
                                       (cond
-                                        (<= (count description) desc-w)
-                                        description
-
-                                        (<= desc-w 3)
-                                        (subs description 0 desc-w)
-
-                                        :else
-                                        (str (subs description
-                                                   0
-                                                   (- desc-w 3))
-                                             "...")))
+                                        (<= (count description) desc-w) description
+                                        (<= desc-w 3) (subs description 0 desc-w)
+                                        :else (str (subs description 0 (- desc-w 3)) "...")))
                           content   (str prefix
                                          (format (str "%-" label-w "s") label)
                                          (apply str (repeat menu-column-gap " "))
@@ -1419,8 +1550,8 @@
                       (str " " (style/secondary "│")
                            (if selected? (style/primary content) content)
                            pad (style/secondary "│"))))
-                  items)]
-    (str/join "\n" (concat [top] rows [bot]))))
+                  (partial render-menu-overflow-row inner-w))]
+    (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot]))))
 
 (def focused-item-arrow
   (style/primary ">"))
@@ -1449,9 +1580,8 @@
   "Two-section bordered box for the browse-mode location picker.
    Top section shows the projected output path and IS the confirm row
    (selected when nav-idx = 0). Bottom section is the navigable directory
-   list (../ + subdirs); selecting an entry navigates. When the list has
-   more than max-browse-rows entries it becomes scrollable, with a
-   '+N more' status line in the box."
+   list (../ + subdirs); selecting an entry navigates. The directory rows
+   follow the focused item within the available terminal height."
   [state]
   (let [tw           (:term-width state)
         inner-w      (- tw 4)
@@ -1464,92 +1594,65 @@
         pn           (text-input/value (:project-name state))
         items        (or (:nav-items state) [])
         sel-idx      (:nav-idx state)
-        offset       (or (:browse-offset state) 0)
         top-sel?     (zero? sel-idx)
-        scroll?      (> (count items) max-browse-rows)
-        win-end      (if scroll? (+ offset max-browse-rows) (count items))
-        visible      (subvec items offset (min win-end (count items)))
-        hidden-below (max 0 (- (count items) win-end))
-        hidden-above offset
+        capacity     (max 1 (- (or (:term-height state) 24) 16))
         ;; Top row: " > <nav-path>/<project>"  (or "   …" when not selected)
         out-path     (str nav-path "/" pn)
-        prefix       (if top-sel? " > " "   ")
+        prefix       (if top-sel? "  > " "    ")
         plain        (str prefix out-path)
         top-pad      (apply str (repeat (max 0 (- inner-w (count plain))) " "))
         top-row      (str " "
                           side
                           (if top-sel?
-                            (str " " focused-item-arrow " ")
-                            "   ")
+                            (str "  " focused-item-arrow " ")
+                            "    ")
                           (if top-sel?
                             (render-path-tail out-path)
                             out-path)
                           top-pad
                           side)
-        ;; Bottom rows: visible nav items, original index = offset + i
-        item-rows
-        (map-indexed
-         (fn [i item]
-           (let [orig-i    (+ offset i)
-                 selected? (= (inc orig-i) sel-idx)
-                 label     (:label item)
-                 plain-row (str (if selected? " > " "   ") label)
-                 pad       (apply str (repeat (max 0 (- inner-w (count plain-row))) " "))
-                 row-text  (if selected?
-                             (str " " (style/primary (str "> " label)))
-                             (str "   " label))]
-             (str " " side row-text pad side)))
-         visible)
-        blank-row    (str " " side
-                          (apply str (repeat inner-w " "))
-                          side)
-        top-status-row (when (and scroll? (> hidden-above 0))
-                         (let [s   (str " ↑ " hidden-above " more")
-                               pad (apply str (repeat (max 0 (- inner-w (count s))) " "))]
-                           (str " " side (style/secondary s) pad side)))
-        status-row   (when (and scroll? (> hidden-below 0))
-                       (let [s   (str " ↓ "
-                                      hidden-below
-                                      " more"
-                                      #_" (Use the ↑↓ arrows to scroll)")
-                             pad (apply str (repeat (max 0 (- inner-w (count s))) " "))]
-                         (str " " side (style/secondary s) pad side)))
-        top-list-row    (or top-status-row blank-row)
-        bottom-list-row (or status-row blank-row)]
-    (str/join "\n" (concat [top-bar top-row mid-bar]
-                           [top-list-row]
-                           item-rows
-                           [bottom-list-row]
+        item-window (menu/render-window
+                     items (max 0 (dec sel-idx)) capacity (+ capacity 2)
+                     (fn [orig-i item]
+                       (let [selected? (= (inc orig-i) sel-idx)
+                             label     (:label item)
+                             plain-row (str (if selected? "  > " "    ") label)
+                             pad       (apply str (repeat (max 0 (- inner-w (count plain-row))) " "))
+                             row-text  (if selected?
+                                         (str "  " (style/primary (str "> " label)))
+                                         (str "    " label))]
+                         (str " " side row-text pad side)))
+                     (partial render-menu-overflow-row inner-w))]
+    (str/join "\n" (concat [top-bar (menu-blank-row inner-w) top-row mid-bar]
+                           (menu-window-rows item-window inner-w)
                            [bot-bar]))))
 
 (defn render-parent-dirs
-  "Bordered list of parent dirs; the selected row appends
-    the project name with primary emphasis to preview the final path."
-  [items selected-idx project-name term-width]
+  "Bordered list of parent dirs with primary emphasis on the selected path."
+  [items selected-idx term-width capacity]
   (let [inner-w (- term-width 4)
         h-bar   (apply str (repeat (max 0 inner-w) "─"))
         top     (str " " (style/secondary (str "╭" h-bar "╮")))
         bot     (str " " (style/secondary (str "╰" h-bar "╯")))
-        rows
-        (map-indexed
-         (fn [i item]
-           (let [selected? (= i selected-idx)
+        window
+        (menu/render-window
+         items selected-idx capacity (+ capacity 2)
+         (fn [index item]
+           (let [selected? (= index selected-idx)
                  path      (str item)
-                 suffix    (when selected? project-name)
                  slash     (when-not (str/ends-with? path "/") "/")
                  path+     (str path slash)
-                 plain     (str (if selected? " > " "   ") (if selected? path+ path) (or suffix ""))
+                 plain     (str (if selected? "  > " "    ") (if selected? path+ path))
                  pad       (apply str (repeat (max 0 (- inner-w (count plain))) " "))
-                 content   (str (if selected? (str " " focused-item-arrow " ") "   ")
-                                (if selected? path+ path)
-                                (when suffix (style/primary suffix)))]
+                 content   (str (if selected? (str "  " focused-item-arrow " ") "    ")
+                                (if selected? (style/primary path+) path))]
              (str " "
                   (style/secondary "│")
                   content
                   pad
                   (style/secondary "│"))))
-         items)]
-    (str/join "\n" (concat [top] rows [bot]))))
+         (partial render-menu-overflow-row inner-w))]
+    (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot]))))
 
 (defn render-summary
   "Confirmation screen. Shows all choices in a bordered box."
@@ -1580,15 +1683,20 @@
                  (row (lbl "SPDX license:    ") (value (:license/id r)))]]
     (str/join "\n" (concat [top] rows [bot]))))
 
-(defn help-bar [_step]
+(defn help-bar [step]
   (str "\n\n  "
-       "Enter" (style/secondary ": next,  ")
+       "Enter" (style/secondary (if (= :repl-install-menu step) ": copy,  " ": next,  "))
        "↑↓" (style/secondary ": menus,  ")
        "Esc" (style/secondary ": back,  ")
        "Ctrl-C" (style/secondary ": quit")))
 
-(defn- helper-text [s]
-  (str/join "\n" (mapv style/secondary (str/split s #"\n"))))
+(defn- helper-text
+  ([s] (helper-text s :secondary))
+  ([s tone]
+   (let [render-line (case tone
+                       :normal style/default
+                       :secondary style/secondary)]
+     (str/join "\n" (mapv render-line (str/split s #"\n"))))))
 
 (def logo
   (style/accent-italic "Blah Project Wizard ★ ☆")
@@ -1600,6 +1708,139 @@
     :hidden (render-step-progress state)
     :logo   (str "  " logo "\n\n" (render-step-progress state))
     (render-step-progress state)))
+
+(defn- fit-repl-text
+  [text width]
+  (let [text (str text) width (max 0 width)]
+    (if (<= (count text) width) text
+        (if (< width 2) (subs text 0 width) (str (subs text 0 (dec width)) "…")))))
+
+(defn- render-repl-rows
+  [items selected width height separators?]
+  (let [inner (max 4 (- width 4))
+        capacity (max 1 height)
+        label-width (apply max 0 (map #(count (:label %)) items))
+        border (fn [left right] (str " " (style/sgr "2" (str left (apply str (repeat inner "─")) right))))
+        window (menu/render-window
+                items selected capacity (+ capacity 2)
+                (fn [index {:keys [label desc description url]}]
+                  (let [focused? (= index selected)
+                        suffix (if (and focused? url) open-in-browser-suffix "")
+                        label-room (max 1 (- inner 4 (count suffix)))
+                        content (str (if focused? "  > " "    ")
+                                     (fit-repl-text
+                                      (str (format (str "%-" (max 1 label-width) "s") label)
+                                           "  " (or desc description "")) label-room)
+                                     suffix)
+                        row (str " " (style/sgr "2" "│")
+                                 (if focused? (style/primary content) content)
+                                 (apply str (repeat (max 0 (- inner (count content))) " "))
+                                 (style/sgr "2" "│"))]
+                    (cond-> []
+                      (and separators? (#{2 4} index))
+                      (conj (str " " (style/sgr "2" "│") (apply str (repeat inner " ")) (style/sgr "2" "│")))
+                      true (conj row))))
+                (partial render-menu-overflow-row inner))]
+    (str/join "\n" (concat [(border "╭" "╮")]
+                           (menu-window-rows window inner)
+                           [(border "╰" "╯")]))))
+
+(defn- render-repl-install-screen
+  [state]
+  (let [width (max 12 (:term-width state))
+        height (:term-height state)
+        content-width (- width 4)
+        label (:label (repls/option (:repl-id state)))
+        indent-lines (fn [lines] (str/join "\n" (map #(str "  " %) lines)))
+        header (str (main-menu-logo-prefix)
+                    main-menu-logo-with-nav
+                    (style/italic (-> main-menu-items* :repl :nav-label))
+                    nav-separator
+                    (style/italic label))
+        header (if (<= (count (strip-ansi header)) width)
+                 header
+                 (str "\n" (style/italic
+                            (fit-repl-text (str "  ◒ jus ╱ " label) width))))
+        helper-slot (fn [lines tone]
+                      (str "  "
+                           (helper-text (str/join "\n  " lines) tone)))
+        shared-footer (let [footer (help-bar :repl-install-menu)]
+                        (if (<= (count (strip-ansi (last (str/split-lines footer)))) width)
+                          footer
+                          (str "\n\n  "
+                               (style/secondary
+                                (fit-repl-text "Enter · ↑↓ · Esc · Ctrl-C" content-width)))))
+        section-gap (if (< height 18) "\n" "\n\n\n")
+        items (repl-install-items (:repl-id state))
+        selected (:menu-idx state)
+        selected-item (nth items selected)
+        heading (style/helper-lines (str error-prefix label " installation not found.") content-width)
+        unavailable? (not (repls/in-1-installation-supported? (:repl-id state)))
+        unavailable-note (when unavailable?
+                           (style/helper-lines (str error-prefix
+                                                    "Quick install option via in-1 not available for Intel Mac")
+                                               content-width))
+        copied? (and (:mode selected-item)
+                     (= (:mode selected-item) (:repl-install-copy-mode state)))
+        command-lines (when copied?
+                        (style/helper-lines (:command selected-item) content-width))
+        confirmation-lines (when copied?
+                             (repl-install-copy-confirmation-lines
+                              label (:mode selected-item) (:command selected-item) content-width))
+        helper-lines (cond
+                       (:error state)
+                       (style/helper-lines (:error state) content-width)
+
+                       :else
+                       (style/helper-lines (:helper selected-item) content-width))
+        shell-lines (if (< height 18) 5 7)
+        helper-limit (max 1 (min 8 (- height (count heading) (count unavailable-note) shell-lines 3)))
+        command-fits? (and copied? (<= (count command-lines) helper-limit))
+        helper (cond
+                 (not copied?) (take helper-limit helper-lines)
+                 command-fits? (take-last helper-limit helper-lines)
+                 :else (take helper-limit
+                             (style/helper-lines
+                              "Enlarge terminal to view the manual command."
+                              content-width)))
+        box-budget (max 3 (- height (count heading) (count unavailable-note) (count helper) shell-lines))
+        capacity (max 1 (min (count items) (- box-budget 2)))
+        window (menu/visible-window items selected capacity)
+        overflow-row-count (count (filter pos? [(:hidden-above window)
+                                                (:hidden-below window)]))
+        final-helper-limit (max 0 (- (count helper) overflow-row-count))
+        helper ((if command-fits? take-last take) final-helper-limit helper)
+        helper-tone (if (or (:mode selected-item) (:error state)) :normal :secondary)
+        compact-copy? (and copied? (< height 18))
+        compact-confirmation-lines (take (max 1 (- height 8)) confirmation-lines)]
+    (cond
+      compact-copy?
+      (str header
+           "\n\n"
+           (helper-slot compact-confirmation-lines :normal)
+           "\n  " (style/secondary "Esc · Ctrl-C")
+           "\n")
+
+      copied?
+      (str header
+           "\n\n\n"
+           (helper-slot confirmation-lines :normal)
+           "\n"
+           shared-footer
+           "\n")
+
+      :else
+      (str header
+           section-gap
+           (indent-lines heading)
+           (when unavailable? (str "\n" (indent-lines unavailable-note)))
+           "\n"
+           (render-repl-rows items selected width capacity false)
+           (when (seq helper)
+             (str "\n" (helper-slot helper helper-tone)))
+           "\n"
+           shared-footer
+           "\n"))))
 
 (defn render-menu-screen
   "Render one of the top-level menu screens."
@@ -1619,21 +1860,29 @@
                                                        (:resource-labels state)))))))
         items (case step
                 :main-menu (main-menu-items)
-                :repl-menu (let [col2-start (->> repls/options 
-                                                 (map #(some-> % :label count)) 
-                                                 (apply max) 
+                :repl-menu (let [col2-start (->> (repls/available-options)
+                                                 (map #(some-> % :label count))
+                                                 (apply max)
                                                  (+ 2))]
                              (mapv #(assoc %
                                            :label
                                            (str (:label %)
-                                                (str/join 
+                                                (str/join
                                                  (repeat (- col2-start
                                                             (or (some-> % :label count)
                                                                 0))
                                                          " "))
                                                 (:description %)))
-                                   repls/options))
-                :resources (resource-items state))]
+                                   (repls/available-options)))
+                :resources (resource-items state))
+        active-url (:url (active-resource state))
+        error-message (:error state)
+        error-lines (if error-message
+                      (+ (count (str/split-lines error-message))
+                         (if (= step :main-menu) 0 1))
+                      0)
+        capacity (menu-row-capacity state
+                                    (+ (if active-url 1 0) error-lines))]
     (str (main-menu-logo-prefix)
          title
          (str "\n\n\n  "
@@ -1647,17 +1896,35 @@
                       "Choose a category"))
                 "Select option")
               "\n")
-         (if (= step :resources)
-           (render-resource-list items (:menu-idx state) (:term-width state))
-           (render-list items (:menu-idx state) (:term-width state)))
-         (when-let [url (:url (active-resource state))]
-           (str "\n  " (style/secondary url)))
-         (when-let [error-message (:error state)]
+         (cond
+           (= step :repl-menu)
+           (render-repl-rows (repls/available-options) (:menu-idx state)
+                             (:term-width state) (max 1 (- (:term-height state) 12)) false)
+           (= step :resources)
+           (render-resource-list items (:menu-idx state) (:term-width state)
+                                 capacity)
+           :else (render-list items (:menu-idx state) (:term-width state)
+                              capacity))
+         (when active-url
+           (str "\n  " (style/secondary active-url)))
+         (when error-message
            (str (if (= step :main-menu) "\n  " "\n\n  ")
                 (style/error error-message)))
          "\n  "
          (help-bar step)
          "\n")))
+
+(defn render-about-screen
+  "Render the read-only About page using the reusable reflowing content container."
+  [state]
+  (str (main-menu-logo-prefix)
+       main-menu-logo-with-nav
+       (style/italic (-> main-menu-items* :about :nav-label))
+       "\n\n\n  About Jus\n"
+       (content/render about-content (:term-width state))
+       "\n"
+       (help-bar :about)
+       "\n"))
 
 (defn view
   "Charm.clj view. Renders the current state to a string."
@@ -1674,6 +1941,12 @@
 
     (:post-confetti-blank-screen-pause? state)
     ""
+
+    (= :repl-install-menu (:step state))
+    (render-repl-install-screen state)
+
+    (= :about (:step state))
+    (render-about-screen state)
 
     (and (menu-screen? (:step state))
          (not (:success-pause state))
@@ -1703,7 +1976,7 @@
       (str "\n"
            (style/primary (str project-created-at path))
            "\n\n"
-           "    Run " (style/primary "jus tasks") " from project root to select and run tasks."))
+           "    Run `bbtl` from the project root to launch tasks."))
 
     ;; Confetti animation
     (:confetti state)
@@ -1721,8 +1994,7 @@
            (-> path (str/split #"/") last)
            "\n\n"
            "  cd " path "\n\n"
-           "  To pick and run a task:\n"
-           "  jus tasks"
+           "  Run bbtl from the project root to select and run tasks (installed separately)."
            (when (= "lib" (:template r))
              (str "\n\n"
                   "  To publish this library to Clojars:\n"
@@ -1753,7 +2025,8 @@
            (when-let [config-error (:config-error state)]
              (str "\n\n  " error-prefix (style/error config-error)))
            "\n\n"
-           (render-list choices choice-idx (:term-width state))
+           (render-list choices choice-idx (:term-width state)
+                        (menu-row-capacity state))
            "\n\n  " (style/secondary "Esc or Ctrl-C: skip")))
 
     ;; Wizard steps
@@ -1771,7 +2044,8 @@
              :project-template
              (render-list ["Library" "App"]
                           (:template-idx state)
-                          (:term-width state))
+                          (:term-width state)
+                          (menu-row-capacity state))
 
              :project-name
              (render-text-field (:project-name state) (:term-width state))
@@ -1787,14 +2061,16 @@
                                          (:term-width state))
                       (render-list items
                                    (:group-idx state)
-                                   (:term-width state)))
+                                   (:term-width state)
+                                   (menu-row-capacity state 2)))
                     "\n  "
                     (helper-text "Add more groups in ~/.config/jus/config.edn")))
 
              :source-layout
-             (render-list (source-layout-items state)
-                          (:source-layout-idx state)
-                          (:term-width state))
+             (render-resource-list (source-layout-items state)
+                                   (:source-layout-idx state)
+                                   (:term-width state)
+                                   (menu-row-capacity state))
 
              :developer
              (let [developers (config/developers (:global-config state))]
@@ -1802,7 +2078,8 @@
                       (render-text-field (:developer state) (:term-width state))
                       (render-list developers
                                    (:developer-idx state)
-                                   (:term-width state)))
+                                   (:term-width state)
+                                   (menu-row-capacity state 2)))
                     "\n  "
                     (helper-text (if (empty? developers)
                                    (str "Leave blank to use the system default: \""
@@ -1816,7 +2093,8 @@
              :license
              (render-list (build-licenses-list (:global-config state))
                           (:license-idx state)
-                          (:term-width state))
+                          (:term-width state)
+                          (menu-row-capacity state))
 
              :confirm
              (render-summary state)
@@ -1831,7 +2109,8 @@
                               [{:label "Browse file tree..."
                                 :type  :browse}])
                    sel      (:nav-idx state)]
-               (render-list items sel (:term-width state)))
+               (render-list items sel (:term-width state)
+                            (menu-row-capacity state)))
 
              :parent-dir-select
              (let [parent-dirs (config/parent-dirs (:global-config state))]
@@ -1843,15 +2122,18 @@
                  (str (render-parent-dirs
                        parent-dirs
                        (:parent-dirs-idx state)
-                       (text-input/value (:project-name state))
-                       (:term-width state))
-                      "\n  "
+                       (:term-width state)
+                       (menu-row-capacity state 4))
+                      "\n  New project path:\n  "
+                      (style/primary
+                       (str (let [parent-dir (nth parent-dirs (:parent-dirs-idx state))]
+                              (if (str/ends-with? parent-dir "/") parent-dir (str parent-dir "/")))
+                            (text-input/value (:project-name state))))
+                      "\n\n  "
                       (helper-text "Add additional parent dirs under :tui :projects in config.edn"))))
 
              :path-confirm
-             (let [items   (or (:nav-items state) [])
-                   scroll? (> (count items) max-browse-rows)]
-               (str (render-browse state)))
+             (render-browse state)
 
              :path-confirm-final
              (let [tw       (:term-width state)
@@ -1867,18 +2149,20 @@
                               (let [selected? (= i sel)
                                     is-path?  (zero? i)
                                     label     (str/replace label #"//" "/")
-                                    plain     (str (if selected? " > " "   ") label)
+                                    plain     (str (if selected? "  > " "    ") label)
                                     pad       (apply str (repeat (max 0 (- inner-w (count plain))) " "))
                                     content   (if selected?
-                                                (str " " focused-item-arrow " "
+                                                (str "  " focused-item-arrow " "
                                                      (if is-path?
                                                        (render-path-tail label)
                                                        (style/primary label)))
-                                                (str "   " label))]
+                                                (str "    " label))]
                                 (str " " side content pad side)))]
                (str/join "\n" [top-bar
+                               (menu-blank-row inner-w)
                                (row 0 out-path)
                                (row 1 "Choose a different location")
+                               (menu-blank-row inner-w)
                                bot-bar]))
 
              "")
@@ -1892,8 +2176,6 @@
            (help-bar step)
            "\n"))))
 
-                                                                                     
-                                                                                     
 ;; EEEEEEEEEEEEEEEEEEEEEEXXXXXXX       XXXXXXXEEEEEEEEEEEEEEEEEEEEEE       CCCCCCCCCCCCC
 ;; E::::::::::::::::::::EX:::::X       X:::::XE::::::::::::::::::::E    CCC::::::::::::C
 ;; E::::::::::::::::::::EX:::::X       X:::::XE::::::::::::::::::::E  CC:::::::::::::::C
@@ -1910,12 +2192,10 @@
 ;; E::::::::::::::::::::EX:::::X       X:::::XE::::::::::::::::::::E  CC:::::::::::::::C
 ;; E::::::::::::::::::::EX:::::X       X:::::XE::::::::::::::::::::E    CCC::::::::::::C
 ;; EEEEEEEEEEEEEEEEEEEEEEXXXXXXX       XXXXXXXEEEEEEEEEEEEEEEEEEEEEE       CCCCCCCCCCCCC
-                                                                                     
-                                                                                    
-                                                                                     
+
 (defn usage
   []
-  (let [logo+link 
+  (let [logo+link
         (str main-menu-logo
              nav-separator
              "A TUI app for Clojure dialects"
@@ -1923,8 +2203,7 @@
              "https://github.com/paintparty/jus")]
     (str "Usage:\n"
          "  jus          Launch the TUI\n"
-         "  jus tasks    Pick and run a public bb task from ./bb.edn\n"
-         "  jus t        Shorthand for `jus tasks`\n"
+         "  jus version  Print the jus version\n"
          "\n"
          logo+link
          "\n\n")))
@@ -1944,15 +2223,6 @@
 (defn- missing-executable-message [executable]
   (repls/missing-executable-message executable))
 
-(defn- preflight!
-  [executables]
-  (if-let [missing (some #(when-not (executable-available? %) %) executables)]
-    (do
-      (binding [*out* *err*]
-        (print (missing-executable-message missing)))
-      false)
-    true))
-
 (defn rebel-readline-command
   "Return a standalone Rebel Readline command.
 
@@ -1969,15 +2239,6 @@
    "rebel-readline.main"
    "--color-theme"
    "neutral-screen-theme"])
-
-(defn- babashka-runtime?
-  []
-  (some? (System/getProperty "babashka.version")))
-
-(defn- exec-process!
-  [command]
-  (require '[babashka.process])
-  (apply (resolve 'babashka.process/exec) command))
 
 (defn- run-child-process!
   [command]
@@ -2002,13 +2263,13 @@
 
 (defn- run-repl!
   ([] (run-repl! :rebel))
-  ([runtime]
+  ([runtime] (run-repl! runtime nil))
+  ([runtime executable]
    (try
-     (let [command ["bb" "-cp" (repl-handoff-classpath) "-m" "repl-handoff.launch"
-                    (name runtime)]]
-       (if (babashka-runtime?)
-         (exec-process! command)
-         (run-child-process! command)))
+     (let [command (cond-> ["bb" "-cp" (repl-handoff-classpath) "-m" "repl-handoff.launch"
+                            (name runtime)]
+                     executable (conj executable))]
+       (run-child-process! command))
      (catch Exception exception
        (binding [*out* *err*]
          (println "Unable to start REPL:" (.getMessage exception)))
@@ -2020,6 +2281,33 @@
   (print "\033[H\033[2J")
   (flush))
 
+(defn- shell-quote
+  "Quote text as one POSIX-shell argument."
+  [text]
+  (str "'" (str/replace text "'" "'\"'\"'") "'"))
+
+(defn- project-directory-command
+  [target-dir]
+  (str "cd " (shell-quote target-dir)))
+
+(defn- copy-project-directory-command!
+  [target-dir]
+  (let [command (project-directory-command target-dir)]
+    (print (screen/copy-to-clipboard command))
+    (println (str "Copied new project path to clipboard; paste it and press Enter:\n"
+                  command))
+    (flush)))
+
+(defn- repl-menu-state-after-exit
+  [state]
+  (-> state
+      (assoc :step :repl-menu
+             :menu-idx (or (:repl-menu-idx state) 0)
+             :done? false
+             :exit-code nil
+             :error nil)
+      (dissoc :action :repl-executable)))
+
 (defn- run-wizard!
   []
   (when clear-console-on-launch?
@@ -2029,54 +2317,34 @@
         _                            (when error
                                        (config/report-config-load-error!
                                         path error location))
-        final-state
-        (program/run {:init       #(animation/initialize-main-menu
-                                    (assoc (main-menu-state config)
-                                           :global-config-exists? exists?))
-                      :update     #'update-fn
-                      :view       #'view
-                      :alt-screen true})]
-    (cond
-      (= :repl (:action final-state))
-      (run-repl! (:repl-id final-state))
+        initial-state                 (assoc (main-menu-state config)
+                                             :global-config-exists? exists?)]
+    (loop [state initial-state
+           opening? true]
+      (let [final-state (program/run {:init       #(if opening?
+                                                     (animation/initialize-main-menu state)
+                                                     [state nil])
+                                      :update     #'update-fn
+                                      :view       #'view
+                                      :alt-screen true})]
+        (cond
+          (= :repl (:action final-state))
+          (let [exit-code (if-let [executable (:repl-executable final-state)]
+                            (run-repl! (:repl-id final-state) executable)
+                            (run-repl! (:repl-id final-state)))]
+            (if (#{0 130} exit-code)
+              (recur (repl-menu-state-after-exit final-state) false)
+              exit-code))
 
-      (:done? final-state)
-      (or (:exit-code final-state) 0)
+          (:done? final-state)
+          (let [exit-code (or (:exit-code final-state) 0)
+                target-dir (get-in final-state [:results :target-dir])]
+            (when (and (zero? exit-code) target-dir)
+              (copy-project-directory-command! target-dir))
+            exit-code)
 
-      :else
-      (or (:exit-code final-state) 0))))
-
-(defn- current-bb-edn-path
-  []
-  (-> (io/file "bb.edn") .getAbsolutePath))
-
-(defn- run-tasks!
-  []
-  (let [{:keys [status path tasks error]} (tasks/discover (current-bb-edn-path))]
-    (case status
-      :missing
-      (do
-        (binding [*out* *err*]
-          (println "No bb.edn (with tasks) was found in:")
-          (println (-> (io/file ".") .getCanonicalPath)))
-        1)
-
-      :invalid
-      (do
-        (binding [*out* *err*]
-          (println "Invalid bb.edn:")
-          (println path)
-          ;; ERROR
-          (println error))
-        1)
-
-      :ok
-      (if (seq tasks)
-        (tasks/run-picker! tasks)
-        (do
-          (println "No public bb tasks found in:")
-          (println path)
-          0)))))
+          :else
+          (or (:exit-code final-state) 0))))))
 
 (defn run-cli!
   [& args]
@@ -2084,14 +2352,21 @@
     []
     (run-wizard!)
 
-    (["tasks"] ["t"])
-    (if (preflight! ["bb"])
-      (run-tasks!)
-      1)
-
     (["-h"] ["--help"])
     (do
       (print (usage))
+      0)
+
+    (["-version"] ["--version"] ["version"])
+    (do
+      (println "jus" version)
+      0)
+
+    (["tasks"] ["t"])
+    (do
+      (println (str "To list and run bb.edn tasks, install "
+                    (style/hyperlink "bbtl" bbtl-url) ":\n"
+                    "bbin install io.github.paintparty/bbtl"))
       0)
 
     (do

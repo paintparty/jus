@@ -7,6 +7,7 @@
             [jus.tui.animation :as animation]
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
+            [jus.tui.repls :as repls]
             [jus.tui.style :as style]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]])
@@ -273,6 +274,20 @@
     (is (not (contains? group-derived-request :main)))
     (is (= :developer (:step advanced)))))
 
+(deftest source-namespace-layout-paths-truncate-within-the-menu-border
+  (let [term-width 66
+        state (assoc (core/project-wizard-state example-global-config)
+                     :step :source-layout
+                     :term-width term-width
+                     :project-name (text-input/text-input :value "asfadsfasdfdsa"))
+        rendered (core/strip-ansi (core/view state))
+        menu-lines (filter #(or (str/includes? % "Project-rooted")
+                                (str/includes? % "Group-derived"))
+                           (str/split-lines rendered))]
+    (is (= 2 (count menu-lines)))
+    (is (every? #(<= (count %) term-width) menu-lines))
+    (is (str/includes? rendered "src/io/github/example/as..."))))
+
 (deftest developer-is-optional-without-saved-developers
   (let [blank-state (assoc (core/project-wizard-state {})
                            :step :developer
@@ -310,6 +325,30 @@
     (is (= :description (:step selected)))
     (is (= "Jane Developer" (:developer (core/collect-results selected))))))
 
+(deftest wizard-list-menus-follow-focus-within-short-terminals
+  (let [height 16
+        license-screen (core/view
+                        (assoc (core/project-wizard-state example-global-config)
+                               :step :license
+                               :license-idx 5
+                               :term-height height))
+        parent-dirs (mapv #(str "/tmp/parent-" %) (range 12))
+        parent-screen (core/view
+                       (assoc (core/project-wizard-state
+                               (config/project-config {:parent-dirs parent-dirs}))
+                              :step :parent-dir-select
+                              :parent-dirs-idx 8
+                              :term-height (+ height 2)))]
+    (is (<= (count (str/split-lines (core/strip-ansi license-screen))) height))
+    (is (<= (count (str/split-lines (core/strip-ansi parent-screen)))
+            (+ height 2)))
+    (is (str/includes? license-screen (style/secondary "  ↑ 2 more")))
+    (is (str/includes? license-screen (style/secondary "  ↓ 1 more")))
+    (is (str/includes? (core/strip-ansi license-screen) "> BSD-2-Clause"))
+    (is (str/includes? parent-screen (style/secondary "  ↑ 7 more")))
+    (is (str/includes? parent-screen (style/secondary "  ↓ 3 more")))
+    (is (str/includes? (core/strip-ansi parent-screen) "> /tmp/parent-8/"))))
+
 (deftest main-menu-routes-to-project-repl-and-resource-actions
   (with-redefs [core/dev-success-sequence? false
                 core/dev-opening-sequence? false]
@@ -338,6 +377,38 @@
       (is (nil? repl-cmd))
       (is (str/includes? rendered "New Project Wizard"))
       (is (str/includes? rendered "Launch Interactive REPL")))))
+
+(deftest main-menu-routes-to-a-resizable-about-page
+  (let [initial (core/main-menu-state example-global-config)
+        about-index (.indexOf (core/main-menu-choices) :about)
+        [about _] (core/update-fn (assoc initial :menu-idx about-index)
+                                  (msg/key-press :enter))
+        [back _] (core/update-fn about (msg/key-press :escape))
+        wide (core/strip-ansi (core/view (assoc about :term-width 80)))
+        narrow (core/strip-ansi (core/view (assoc about :term-width 40)))
+        urls ["https://babashka.org/"
+              "https://github.com/TimoKramer/charm.clj"
+              "https://github.com/weavejester/cljfmt"
+              "https://github.com/seancorfield/deps-new"
+              "https://github.com/paintparty/jus"
+              "https://github.com/sponsors/paintparty"]]
+    (is (= :about (:step about)))
+    (is (= :main-menu (:step back)))
+    (is (str/includes? wide "About Jus"))
+    (is (str/includes? core/about-content
+                       (str "deps-new](https://github.com/seancorfield/deps-new) "
+                            core/deps-new-version)))
+    (is (str/includes? wide "https://github.com/paintparty/jus"))
+    (is (> (count (str/split-lines narrow))
+           (count (str/split-lines wide))))
+    (with-redefs [style/hyperlinks-enabled? (constantly true)]
+      (let [rendered (core/view (assoc about :term-width 100))]
+        (is (str/includes? rendered
+                           (str "\033]8;;https://github.com/seancorfield/deps-new\033\\"
+                                "\033[4mdeps-new\033[24m\033]8;;\033\\ "
+                                core/deps-new-version ".")))
+        (doseq [url urls]
+          (is (str/includes? rendered (str "\033]8;;" url "\033\\"))))))))
 
 (deftest development-success-sequence-can-be-played-from-the-main-menu
   (let [initial (core/main-menu-state example-global-config)]
@@ -426,6 +497,42 @@
     (is (str/includes? rendered "Explore Clojure variants and dialects"))
     (is (not (str/includes? rendered "https://clojure.org/")))))
 
+(deftest community-resources-follow-focus-within-short-terminal-menus
+  (let [height 16
+        state (assoc (core/main-menu-state example-global-config)
+                     :step :resources
+                     :menu-idx 5
+                     :resource-stack [data/community-resources]
+                     :resource-labels []
+                     :resource-menu-labels []
+                     :term-height height)
+        rendered (core/view state)
+        plain (core/strip-ansi rendered)]
+    (is (<= (count (str/split-lines plain)) height))
+    (is (str/includes? plain "> Development"))
+    (is (str/includes? rendered (style/secondary "  ↑ 2 more")))
+    (is (str/includes? rendered (style/secondary "  ↓ 7 more")))))
+
+(deftest community-resource-menu-reserves-space-for-the-selected-url
+  (let [height 16
+        items (mapv (fn [index]
+                      {:label (str "Resource " index)
+                       :desc "Description"
+                       :url (str "https://example.test/" index)})
+                    (range 13))
+        state (assoc (core/main-menu-state example-global-config)
+                     :step :resources
+                     :menu-idx 5
+                     :resource-stack [items]
+                     :resource-labels []
+                     :resource-menu-labels []
+                     :term-height height)
+        rendered (core/view state)]
+    (is (<= (count (str/split-lines (core/strip-ansi rendered))) height))
+    (is (str/includes? rendered (style/secondary "  ↑ 3 more")))
+    (is (str/includes? rendered (style/secondary "  ↓ 7 more")))
+    (is (str/includes? rendered "https://example.test/5"))))
+
 (deftest community-resource-selection-persists-when-leaving-nested-menus
   (let [links       [{:label "Nested link" :url "https://example.test"}]
         child-items [{:label "First child" :entries links}
@@ -475,6 +582,112 @@
     (is (not (str/includes? (core/strip-ansi (core/view back))
                             "Select a dialect")))))
 
+(deftest menu-lists-pad-all-sides-of-items-and-overflow
+  (let [base (core/main-menu-state example-global-config)
+        browse-state {:term-width 44
+                      :term-height 24
+                      :nav-path "/tmp/projects"
+                      :project-name (text-input/text-input :value "demo")
+                      :nav-items [{:label "First"} {:label "Second"}]
+                      :nav-idx 1}
+        cases {"regular" (core/render-list ["First" "Second"] 0 44 2)
+               "resource" (core/render-resource-list
+                           [{:label "First" :desc "One"}
+                            {:label "Second" :desc "Two"}] 0 44 2)
+               "REPL" (core/view (assoc base :step :repl-menu
+                                        :term-width 44 :term-height 40))
+               "REPL install" (core/view (assoc base :step :repl-install-menu
+                                                :repl-id :clojure :term-width 44))
+               "parent directories" (core/render-parent-dirs
+                                     ["/tmp/first" "/tmp/second"] 0 44 2)
+               "browse" (core/render-browse browse-state)
+               "final location" (core/view
+                                 (assoc (core/project-wizard-state example-global-config)
+                                        :step :path-confirm-final
+                                        :nav-path "/tmp/projects"
+                                        :project-name (text-input/text-input :value "demo")
+                                        :term-width 44))
+               "toggle" (core/render-toggle true 44)}]
+    (doseq [[label rendered] cases]
+      (let [lines (str/split-lines (core/strip-ansi rendered))
+            box (->> lines
+                     (drop-while #(not (str/starts-with? % " ╭")))
+                     (take-while #(not (str/starts-with? % " ╰")))
+                     vec)
+            bottom (first (drop-while #(not (str/starts-with? % " ╰")) lines))]
+        (is (seq box) label)
+        (is bottom label)
+        (is (re-matches #"^ │ +│$" (second box)) label)
+        (is (re-matches #"^ │ +│$" (last box)) label)
+        (is (some #(str/starts-with? % " │  > ") box) label)
+        (is (some #(str/starts-with? % " │    ") box) label)))))
+
+(deftest overflow-rows-replace-menu-padding-without-growing-the-box
+  (let [box (fn [rendered]
+              (->> (str/split-lines (core/strip-ansi rendered))
+                   (drop-while #(not (str/starts-with? % " ╭")))
+                   (take-while #(not (str/starts-with? % " ╰")))
+                   vec))
+        blank? #(boolean (re-matches #"^ │ +│$" %))
+        overflow? (fn [arrow line]
+                    (boolean (re-matches
+                              (re-pattern (str "^ │  " arrow " [0-9]+ more +│$"))
+                              line)))
+        renderers {"regular" (fn [items selected]
+                               (core/render-list items selected 44 4))
+                   "resource" (fn [items selected]
+                                (core/render-resource-list
+                                 (mapv #(hash-map :label %) items) selected 44 4))
+                   "parent directories" (fn [items selected]
+                                          (core/render-parent-dirs items selected 44 4))
+                   "REPL" (fn [items selected]
+                            (with-redefs [repls/available-options
+                                          (constantly (mapv #(hash-map :label %) items))]
+                              (core/view
+                               (assoc (core/main-menu-state example-global-config)
+                                      :step :repl-menu
+                                      :term-width 44
+                                      :term-height 16
+                                      :menu-idx selected))))}
+        short-items (mapv str (range 4))
+        long-items (mapv str (range 20))]
+    (doseq [[label render] renderers]
+      (let [full (box (render short-items 0))
+            bottom (box (render long-items 0))
+            both (box (render long-items 10))
+            top (box (render long-items 19))]
+        (is (apply = (map count [full bottom both top])) label)
+        (is (blank? (second full)) label)
+        (is (blank? (last full)) label)
+        (is (blank? (second bottom)) label)
+        (is (overflow? "↓" (last bottom)) label)
+        (is (overflow? "↑" (second both)) label)
+        (is (overflow? "↓" (last both)) label)
+        (is (overflow? "↑" (second top)) label)
+        (is (blank? (last top)) label)))
+    (let [items (mapv #(hash-map :label (str "dir-" %)) (range 20))
+          render (fn [selected]
+                   (box (core/render-browse
+                         {:term-width 44 :term-height 24
+                          :nav-path "/tmp" :project-name (text-input/text-input :value "demo")
+                          :nav-items items :nav-idx selected})))
+          bottom (render 1)
+          both (render 10)
+          top (render 20)
+          directory-top (fn [lines]
+                          (nth lines (inc (first
+                                           (keep-indexed
+                                            (fn [index line]
+                                              (when (str/starts-with? line " ├") index))
+                                            lines)))))]
+      (is (apply = (map count [bottom both top])))
+      (is (blank? (directory-top bottom)))
+      (is (overflow? "↓" (last bottom)))
+      (is (overflow? "↑" (directory-top both)))
+      (is (overflow? "↓" (last both)))
+      (is (overflow? "↑" (directory-top top)))
+      (is (blank? (last top))))))
+
 (deftest active-resource-shows-its-url-below-the-global-column-gap
   (let [state (assoc (core/main-menu-state example-global-config)
                      :step :resources
@@ -488,13 +701,14 @@
     (is (str/includes? rendered "... ↗"))
     (is (str/includes? rendered "https://example.test"))
     (is (= (count " ╭──────────────────────────────────────────────╮")
-           (count (second (str/split-lines
-                           (core/strip-ansi
-                            (core/render-resource-list
-                             [{:label "A resource"
-                               :desc "A description that is too long for this narrow menu"}]
-                             0
-                             50)))))))))
+           (count (nth (str/split-lines
+                        (core/strip-ansi
+                         (core/render-resource-list
+                          [{:label "A resource"
+                            :desc "A description that is too long for this narrow menu"}]
+                          0
+                          50
+                          1))) 2))))))
 
 (deftest new-project-opens-the-project-wizard-and-returns-to-main-menu
   (with-redefs [core/dev-success-sequence? false
@@ -527,7 +741,8 @@
   (let [initial (assoc (core/main-menu-state example-global-config)
                        :step :repl-menu)
         [down _] (core/update-fn initial (msg/key-press :down))
-        [last-item _] (core/update-fn down (msg/key-press "j"))
+        [cljr _] (core/update-fn down (msg/key-press "j"))
+        [last-item _] (core/update-fn cljr (msg/key-press :down))
         [clamped _] (core/update-fn last-item (msg/key-press :down))
         [up _] (core/update-fn clamped (msg/key-press "k"))
         [launch launch-cmd] (core/update-fn up (msg/key-press :enter))
@@ -535,11 +750,13 @@
         [_ quit-cmd] (core/update-fn initial (msg/key-press "c" :ctrl true))
         rendered (core/strip-ansi (core/view initial))]
     (is (= 1 (:menu-idx down)))
-    (is (= 2 (:menu-idx last-item)))
-    (is (= 3 (:menu-idx clamped)))
-    (is (= 2 (:menu-idx up)))
+    (is (= 2 (:menu-idx cljr)))
+    (is (= 3 (:menu-idx last-item)))
+    (is (= 4 (:menu-idx clamped)))
+    (is (= 3 (:menu-idx up)))
     (is (= :repl (:action launch)))
     (is (= :babashka (:repl-id launch)))
+    (is (= 3 (:repl-menu-idx launch)))
     (is (= program/quit-cmd launch-cmd))
     (is (= :main-menu (:step back)))
     (is (zero? (:menu-idx back)))
@@ -547,8 +764,33 @@
     (is (= 130 (:exit-code (first (core/update-fn initial
                                                   (msg/key-press "c" :ctrl true))))))
     (is (str/includes? rendered "Select REPL type"))
-    (is (str/includes? rendered "Clojure                      JVM, default"))
-    (is (str/includes? rendered "ClojureScript                JS"))))
+    (is (str/includes? rendered "Clojure        JVM, default"))
+    (is (str/includes? rendered "ClojureScript  JS"))))
+
+(deftest repl-menu-shows-secondary-overflow-counts-around-the-visible-items
+  (with-redefs [repls/available-options
+                (constantly (subvec (into repls/options repls/more-options) 0 13))]
+    (let [render (fn [selected height]
+                   (core/view
+                    (assoc (core/main-menu-state example-global-config)
+                           :step :repl-menu
+                           :menu-idx selected
+                           :term-height height)))
+          full-screen (render 10 25)
+          bottom-only (render 10 23)
+          both-sides (render 10 21)
+          top-only (render 12 21)]
+      (is (not (str/includes? (core/strip-ansi full-screen) " more")))
+      (is (not (re-find #"↑ \d+ more" (core/strip-ansi bottom-only))))
+      (is (str/includes? bottom-only (style/secondary "  ↓ 2 more")))
+      (is (str/includes? both-sides (style/secondary "  ↑ 2 more")))
+      (is (str/includes? both-sides (style/secondary "  ↓ 2 more")))
+      (is (str/includes? top-only (style/secondary "  ↑ 4 more")))
+      (is (not (re-find #"↓ \d+ more" (core/strip-ansi top-only))))
+      (is (< (.indexOf both-sides "↑ 2 more")
+             (.indexOf both-sides "Babashka")))
+      (is (< (.indexOf both-sides "Glojure")
+             (.indexOf both-sides "↓ 2 more"))))))
 
 (defn- final-confirmation-state [parent]
   {:step           :path-confirm-final
@@ -856,6 +1098,45 @@
     (is (zero? (:nav-idx back)))
     (is (str/includes? project-path-rendered "> Browse file tree..."))))
 
+(deftest parent-directory-picker-separates-the-selected-parent-and-new-project-path
+  (let [state (assoc (core/project-wizard-state
+                      (config/project-config {:parent-dirs ["/tmp/projects" "/tmp/other/"]}))
+                     :step :parent-dir-select
+                     :parent-dirs-idx 0
+                     :project-name (text-input/text-input :value "my-lib"))
+        rendered (core/view state)
+        selected-row (some #(when (str/includes? % "> /tmp/projects/") %)
+                           (str/split-lines (core/strip-ansi rendered)))]
+    (is (str/includes? rendered (str core/focused-item-arrow " " (style/primary "/tmp/projects/"))))
+    (is (not (str/includes? selected-row "my-lib")))
+    (is (str/includes? rendered "New project path:"))
+    (is (str/includes? rendered (style/primary "/tmp/projects/my-lib")))
+    (is (str/includes? rendered
+                       (style/secondary "Add additional parent dirs under :tui :projects in config.edn")))))
+
+(deftest location-browser-follows-focus-within-short-terminal-menus
+  (let [height 16
+        items (mapv (fn [index]
+                      {:label (str "dir-" index "/")
+                       :type :dir
+                       :path (str "/tmp/projects/dir-" index)})
+                    (range 24))
+        state {:step :path-confirm
+               :path-mode "browse"
+               :nav-path "/tmp/projects"
+               :nav-idx 10
+               :nav-items items
+               :project-name (text-input/text-input :value "my-lib")
+               :max-step-idx 9
+               :term-width 80
+               :term-height height}
+        rendered (core/view state)
+        plain (core/strip-ansi rendered)]
+    (is (<= (count (str/split-lines plain)) height))
+    (is (str/includes? plain "> dir-9/"))
+    (is (str/includes? rendered (style/secondary "  ↑ 9 more")))
+    (is (str/includes? rendered (style/secondary "  ↓ 14 more")))))
+
 (deftest configured-home-relative-parent-dirs-resolve-before-confirmation
   (let [configured-parent "~/hooli/projects"
         state (assoc (final-confirmation-state configured-parent)
@@ -942,8 +1223,9 @@
     (is (= program/quit-cmd quit-command))
     (is (str/includes? completion-rendered target))
     (is (str/includes? completion-rendered "cd "))
-    (is (str/includes? completion-rendered "jus"))
-    (is (str/includes? completion-rendered "tasks"))
+    (is (str/includes? completion-rendered
+                       "Run bbtl from the project root to select and run tasks (installed separately)."))
+    (is (not (str/includes? completion-rendered "jus tasks")))
     (is (str/includes? completion-rendered "CLOJARS_USERNAME"))
     (is (str/includes? completion-rendered "CLOJARS_PASSWORD"))
     (is (str/includes? completion-rendered "bb ci:deploy"))))
@@ -1504,13 +1786,23 @@
                      :term-width 80}
         output (with-redefs [program/run (fn [_] final-state)]
                  (with-out-str (core/-main)))]
-    (is (= "\033[H\033[2J" output))))
+    (is (str/starts-with? output "\033[H\033[2J\033]52;c;"))
+    (is (str/includes? output "Copied project directory command to clipboard"))
+    (is (str/includes? output "cd '/tmp/jus-persistent-hint/my-lib'"))))
+
+(deftest project-directory-command-quotes-special-paths
+  (is (= "cd '/tmp/jus '\"'\"'s/my app'"
+         (#'core/project-directory-command "/tmp/jus 's/my app"))))
 
 (deftest repl-handoff-does-not-clear-the-console-again
   (let [launched (atom nil)
-        final-state {:action :repl :repl-id :babashka}]
+        final-states (atom [{:action :repl :repl-id :babashka}
+                            {:done? true :exit-code 0}])]
     (with-redefs-fn {#'core/clear-console-on-launch? false
-                     #'program/run (constantly final-state)
+                     #'program/run (fn [_]
+                                     (let [state (first @final-states)]
+                                       (swap! final-states subvec 1)
+                                       state))
                      #'config/global-config-path (constantly "/tmp/jus-config.edn")
                      #'config/load-config-result (constantly {:config {}
                                                               :exists? false})
@@ -1521,14 +1813,83 @@
          (is (= "" output))
          (is (= :babashka @launched))))))
 
+(deftest normal-repl-exit-returns-to-the-selected-repl-menu
+  (let [initial-states (atom [])
+        final-states (atom [{:action :repl :repl-id :babashka
+                             :repl-menu-idx 2}
+                            {:done? true :exit-code 0}])]
+    (with-redefs-fn {#'core/clear-console-on-launch? false
+                     #'animation/initialize-main-menu (fn [state] [state nil])
+                     #'program/run (fn [{:keys [init]}]
+                                     (swap! initial-states conj (first (init)))
+                                     (let [state (first @final-states)]
+                                       (swap! final-states subvec 1)
+                                       state))
+                     #'config/global-config-path (constantly "/tmp/jus-config.edn")
+                     #'config/load-config-result (constantly {:config {}
+                                                              :exists? false})
+                     #'core/run-repl! (constantly 0)}
+      #(do
+         (is (= 0 (core/run-cli!)))
+         (is (= 2 (count @initial-states)))
+         (is (= :repl-menu (:step (second @initial-states))))
+         (is (= 2 (:menu-idx (second @initial-states))))
+         (is (nil? (:action (second @initial-states))))))))
+
+(deftest repl-user-interrupt-returns-to-the-selected-repl-menu
+  (let [initial-states (atom [])
+        final-states (atom [{:action :repl :repl-id :clojure
+                             :repl-menu-idx 0}
+                            {:done? true :exit-code 0}])]
+    (with-redefs-fn {#'core/clear-console-on-launch? false
+                     #'animation/initialize-main-menu (fn [state] [state nil])
+                     #'program/run (fn [{:keys [init]}]
+                                     (swap! initial-states conj (first (init)))
+                                     (let [state (first @final-states)]
+                                       (swap! final-states subvec 1)
+                                       state))
+                     #'config/global-config-path (constantly "/tmp/jus-config.edn")
+                     #'config/load-config-result (constantly {:config {}
+                                                              :exists? false})
+                     #'core/run-repl! (constantly 130)}
+      #(do
+         (is (= 0 (core/run-cli!)))
+         (is (= 2 (count @initial-states)))
+         (is (= :repl-menu (:step (second @initial-states))))
+         (is (zero? (:menu-idx (second @initial-states))))))))
+
 (deftest cli-help-prints-usage-to-stdout
   (let [err    (java.io.StringWriter.)
         result (binding [*err* err]
                  (with-out-str
                    (is (= 0 (core/run-cli! "--help")))))]
     (is (str/includes? result "Usage:"))
-    (is (str/includes? result "jus tasks"))
+    (is (not (str/includes? result "jus tasks")))
     (is (= "" (str err)))))
+
+(deftest removed-task-routes-show-bbtl-deprecation-message
+  (doseq [argument ["tasks" "t"]]
+    (let [err    (java.io.StringWriter.)
+          output (binding [*err* err]
+                   (with-redefs [style/hyperlinks-enabled? (constantly true)]
+                     (with-out-str
+                       (is (= 0 (core/run-cli! argument))))))]
+      (is (= "" (str err)))
+      (is (str/includes? output
+                         (str "To list and run bb.edn tasks, install "
+                              "\033]8;;https://github.com/paintparty/bbtl\033\\"
+                              "\033[4mbbtl\033[24m"
+                              "\033]8;;\033\\:\n"
+                              "bbin install io.github.paintparty/bbtl"))))))
+
+(deftest cli-version-flags-print-the-jus-version-to-stdout
+  (doseq [flag ["-version" "--version" "version"]]
+    (let [err    (java.io.StringWriter.)
+          output (binding [*err* err]
+                   (with-out-str
+                     (is (= 0 (core/run-cli! flag)))))]
+      (is (= (str "jus " core/version "\n") output))
+      (is (= "" (str err))))))
 
 (deftest cli-rejects-unknown-arguments-on-stderr
   (let [err    (java.io.StringWriter.)
@@ -1549,26 +1910,22 @@
             "--color-theme" "neutral-screen-theme"]
            [main-flag main-opt module color-theme-flag color-theme]))))
 
-(deftest repl-replaces-the-babashka-process
+(deftest repl-waits-for-the-handoff-process-on-babashka
   (let [command  ["bb" "-cp" (#'core/repl-handoff-classpath)
                   "-m" "repl-handoff.launch" "rebel"]
-        executed (atom nil)]
-    (with-redefs-fn {#'core/babashka-runtime? (constantly true)
-                     #'core/exec-process! #(reset! executed %)
-                     #'core/run-child-process! (fn [_]
-                                                 (throw (Exception. "unexpected child process")))}
+        started (atom nil)]
+    (with-redefs-fn {#'core/run-child-process! (fn [actual]
+                                                 (reset! started actual)
+                                                 23)}
       #(do
-         (#'core/run-repl!)
-         (is (= command @executed))
-         (let [classpath (java.io.File. (nth @executed 2))]
+         (is (= 23 (#'core/run-repl!)))
+         (is (= command @started))
+         (let [classpath (java.io.File. (nth @started 2))]
            (is (.isAbsolute classpath))
            (is (.isDirectory classpath)))))))
 
 (deftest repl-waits-for-a-child-process-on-the-jvm
-  (with-redefs-fn {#'core/babashka-runtime? (constantly false)
-                   #'core/exec-process! (fn [_]
-                                          (throw (Exception. "unexpected exec")))
-                   #'core/run-child-process! (constantly 23)}
+  (with-redefs-fn {#'core/run-child-process! (constantly 23)}
     #(is (= 23 (#'core/run-repl!)))))
 
 (deftest cli-launches-wizard-without-global-repl-preflights
@@ -1597,62 +1954,3 @@
          (is (= "" output))
          (is @started)
          (is (= "" (str err)))))))
-
-(deftest cli-reports-missing-bb-for-tasks-before-discovery
-  (let [err        (java.io.StringWriter.)
-        discovered (atom false)]
-    (with-redefs-fn {#'core/executable-available? (constantly false)
-                     #'jus.tui.tasks/discover (fn [_]
-                                                (reset! discovered true)
-                                                {:status :ok :tasks []})}
-      #(let [output (binding [*err* err]
-                      (with-out-str
-                        (is (= 1 (core/run-cli! "tasks")))))]
-         (is (= "" output))
-         (is (false? @discovered))
-         (is (str/includes? (str err) "Required executable not found: bb"))))))
-
-(deftest cli-tasks-reports-discovery-errors-and-empty-task-list
-  (with-redefs-fn {#'core/executable-available? (constantly true)}
-    #(do
-       (let [err (java.io.StringWriter.)]
-         (with-redefs [jus.tui.tasks/discover (constantly {:status :missing})]
-           (let [output (binding [*err* err]
-                          (with-out-str
-                            (is (= 1 (core/run-cli! "tasks")))))]
-             (is (= "" output))
-             (is (str/includes? (str err) "No bb.edn (with tasks) was found in:")))))
-       (let [err (java.io.StringWriter.)]
-         (with-redefs [jus.tui.tasks/discover
-                       (constantly {:status :invalid
-                                    :path   "/tmp/project/bb.edn"
-                                    :error  "Map entry is missing a value"})]
-           (let [output (binding [*err* err]
-                          (with-out-str
-                            (is (= 1 (core/run-cli! "tasks")))))]
-             (is (= "" output))
-             (is (str/includes? (str err) "Invalid bb.edn:"))
-             (is (str/includes? (str err) "/tmp/project/bb.edn"))
-             (is (str/includes? (str err) "Map entry is missing a value")))))
-       (with-redefs [jus.tui.tasks/discover
-                     (constantly {:status :ok
-                                  :path   "/tmp/project/bb.edn"
-                                  :tasks  []})]
-         (let [err    (java.io.StringWriter.)
-               output (binding [*err* err]
-                        (with-out-str
-                          (is (= 0 (core/run-cli! "tasks")))))]
-           (is (str/includes? output "No public bb tasks found in:"))
-           (is (str/includes? output "/tmp/project/bb.edn"))
-           (is (= "" (str err))))))))
-
-(deftest cli-tasks-propagates-picker-exit-code
-  (with-redefs-fn {#'core/executable-available? (constantly true)
-                   #'jus.tui.tasks/discover (constantly {:status :ok
-                                                         :path   "/tmp/project/bb.edn"
-                                                         :tasks  [{:name "test"
-                                                                   :doc  ""}]})
-                   #'jus.tui.tasks/run-picker! (fn [tasks]
-                                                 (is (= [{:name "test" :doc ""}] tasks))
-                                                 42)}
-    #(is (= 42 (core/run-cli! "tasks")))))
