@@ -82,7 +82,7 @@ You can install jus via `in-1` or `bbin`
 
 [in-1](https://in-1.cc) is a very simple way to install lots of things quickly and with no prerequisites.
 
-> Note: `in-1` works for Bash, Zah and Fish. See [the install page](https://in-1.cc/install/) specifics.
+> Note: `in-1` works for Bash, Zsh and Fish. See [the install page](https://in-1.cc/install/) specifics.
 
 To try `jus` without installing it permanently, just run:
 
