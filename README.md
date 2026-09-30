@@ -78,6 +78,22 @@ Early days.
 
 You can install jus via `in-1` or `bbin`
 
+### Install with `bbin`
+If not already installed,
+ [follow these instructions](https://github.com/babashka/bbin#installation) to install `bbin`.
+
+Then install jus:
+
+```
+bbin install io.github.paintparty/jus
+```
+
+#### Uninstall with `bbin`
+```
+bbin uninstall jus
+```
+<br>
+
 ### Install with `in-1`
 
 [in-1](https://in-1.cc) is a very simple way to install lots of things quickly and with no prerequisites.
@@ -108,21 +124,6 @@ To uninstall `jus`, just run `in-1 --uninstall jus`.
 
 <br>
 
-### Install with `bbin`
-If not already installed,
- [follow these instructions](https://github.com/babashka/bbin#installation) to install `bbin`.
-
-Then install jus:
-
-```
-bbin install io.github.paintparty/jus
-```
-
-#### Uninstall with `bbin`
-```
-bbin uninstall jus
-```
-<br>
 
 ## Usage
 Launch the TUI:
