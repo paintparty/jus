@@ -140,13 +140,14 @@ Based on usage patterns and subject to community feedback going forward, here is
 
 - Support a [Quickstart/Fiddle wizard flow](https://github.com/paintparty/jus/issues/6)
 
-- Support idiomatic new project templates for additional dialects. Currently, the new project wizard produces a deps.edn project structure and bb.edn for JVM clojure projects. In order of priority, I would like to add support for:
-1 Babashka
-2 CLJS Browser
-3 CLJS Node
-4 Squint
-5 nbb
-6 Jolt
+- Support idiomatic new project templates for additional dialects. Currently, the new project wizard produces a deps.edn project structure and bb.edn for JVM clojure projects. In order of priority, support is planned for:
+
+  1. Babashka
+  2. CLJS Browser
+  3. CLJS Node
+  4. Squint
+  5. nbb
+  6. Jolt
 
 - Leverage the TUI to expose the functionality of existing deps.edn project utility libs such as [neil](https://github.com/babashka/neil), similar to how jus currently dispatches to [deps-new](https://github.com/seancorfield/deps-new)
 
