@@ -582,6 +582,12 @@
     (is (not (str/includes? (core/strip-ansi (core/view back))
                             "Select a dialect")))))
 
+(defn- drop-repl-header
+  "Remove the REPL menu's column header row and the divider under it."
+  [lines]
+  (let [[before [header & after]] (split-with #(not (str/includes? % "Dialect")) lines)]
+    (if header (concat before (rest after)) lines)))
+
 (deftest menu-lists-pad-all-sides-of-items-and-overflow
   (let [base (core/main-menu-state example-global-config)
         browse-state {:term-width 44
@@ -613,6 +619,7 @@
             box (->> lines
                      (drop-while #(not (str/starts-with? % " ╭")))
                      (take-while #(not (str/starts-with? % " ╰")))
+                     drop-repl-header
                      vec)
             bottom (first (drop-while #(not (str/starts-with? % " ╰")) lines))]
         (is (seq box) label)
@@ -627,6 +634,7 @@
               (->> (str/split-lines (core/strip-ansi rendered))
                    (drop-while #(not (str/starts-with? % " ╭")))
                    (take-while #(not (str/starts-with? % " ╰")))
+                   drop-repl-header
                    vec))
         blank? #(boolean (re-matches #"^ │ +│$" %))
         overflow? (fn [arrow line]
@@ -647,7 +655,7 @@
                                (assoc (core/main-menu-state example-global-config)
                                       :step :repl-menu
                                       :term-width 44
-                                      :term-height 16
+                                      :term-height 18
                                       :menu-idx selected))))}
         short-items (mapv str (range 4))
         long-items (mapv str (range 20))]
@@ -767,6 +775,27 @@
     (is (str/includes? rendered "Clojure        JVM, default"))
     (is (str/includes? rendered "ClojureScript  JS"))))
 
+(deftest repl-menu-shows-header-and-installed-checks
+  (with-redefs [repls/available-options
+                (constantly (subvec (into repls/options repls/more-options) 0 3))]
+    (let [render (fn [installed]
+                   (->> (core/view
+                         (assoc (core/main-menu-state example-global-config)
+                                :step :repl-menu
+                                :term-width 80
+                                :repl-installed installed))
+                        core/strip-ansi
+                        str/split-lines))
+          row    (fn [lines label]
+                   (first (filter #(str/includes? % label) lines)))
+          lines  (render #{:clojure :cljr})]
+      (is (re-find #"Dialect +Host +Installed\?" (row lines "Dialect")))
+      (is (str/starts-with? (row lines "├") " ├"))
+      (is (str/includes? (row lines "JVM, default") "✓"))
+      (is (str/includes? (row lines "Microsoft's .NET CLR") "✓"))
+      (is (not (str/includes? (row lines "rebel-readline") "✓")))
+      (is (not (some #(str/includes? % "✓") (render #{})))))))
+
 (deftest repl-menu-shows-secondary-overflow-counts-around-the-visible-items
   (with-redefs [repls/available-options
                 (constantly (subvec (into repls/options repls/more-options) 0 13))]
@@ -776,10 +805,10 @@
                            :step :repl-menu
                            :menu-idx selected
                            :term-height height)))
-          full-screen (render 10 25)
-          bottom-only (render 10 23)
-          both-sides (render 10 21)
-          top-only (render 12 21)]
+          full-screen (render 10 27)
+          bottom-only (render 10 25)
+          both-sides (render 10 23)
+          top-only (render 12 23)]
       (is (not (str/includes? (core/strip-ansi full-screen) " more")))
       (is (not (re-find #"↑ \d+ more" (core/strip-ansi bottom-only))))
       (is (str/includes? bottom-only (style/secondary "  ↓ 2 more")))

@@ -138,3 +138,22 @@
          (mapv :id (repls/available-options "Windows 11"))))
   (is (= ["gloat" "--repl"] (repls/command :gloat ".")))
   (is (= "Python" (:description (repls/option :hy)))))
+
+(deftest installed-checks-the-path-and-in-1-wrappers
+  (let [root (fs/create-temp-dir {:prefix "jus repl installed "})
+        bin (io/file (str root) "bin")
+        local-bin (io/file (str root) ".local" "bin")]
+    (try
+      (.mkdirs bin)
+      (.mkdirs local-bin)
+      (doseq [f [(io/file bin "clojure") (io/file bin "node") (io/file local-bin "glj")]]
+        (spit f "#!/bin/sh\n")
+        (.setExecutable f true))
+      (let [env {:home (str root) :tmp (str root "/tmp") :path (str bin)}]
+        (is (repls/installed? :clojure env))
+        (is (repls/installed? :clojurescript env))
+        (is (not (repls/installed? :babashka env)))
+        (is (repls/installed? :glojure env))
+        (is (not (repls/installed? :hy env))))
+      (finally
+        (fs/delete-tree root)))))

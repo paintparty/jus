@@ -704,6 +704,7 @@
   [state]
   (-> state
       (assoc :step :repl-menu :menu-idx (or (:repl-menu-idx state) 0)
+             :repl-installed (repls/installed-ids)
              :error nil :action nil)
       (dissoc :repl-install-copy-mode :repl-executable)))
 
@@ -937,7 +938,8 @@
                   :term-height (:term-height state))
            nil]
 
-          :repl [(assoc state :step :repl-menu :menu-idx 0 :error nil) nil]
+          :repl [(assoc state :step :repl-menu :menu-idx 0 :error nil
+                        :repl-installed (repls/installed-ids)) nil]
 
           :resources
           [(assoc state :step :resources
@@ -1717,22 +1719,46 @@
     (if (<= (count text) width) text
         (if (< width 2) (subs text 0 width) (str (subs text 0 (dec width)) "…")))))
 
+(def ^:private installed-mark "✓")
+
 (defn- render-repl-rows
-  [items selected width height separators? & [padded?]]
+  "Bordered REPL list. With `:installed` (a set of ids), renders a Dialect, Host,
+  Installed? header row, a divider below it, and a check column."
+  [items selected width height separators? & [padded? {:keys [installed]}]]
   (let [inner (max 4 (- width 4))
         capacity (max 1 height)
         label-width (apply max 0 (map #(count (:label %)) items))
+        desc-width (apply max 0 (map #(count (or (:desc %) (:description %) "")) items))
+        header-row (when installed
+                     (let [text (fit-repl-text
+                                 (str "    "
+                                      (format (str "%-" (max 1 label-width) "s") "Dialect")
+                                      "  "
+                                      (format (str "%-" (max 1 desc-width) "s") "Host")
+                                      "  Installed?")
+                                 inner)]
+                       (str " " (style/sgr "2" "│")
+                            (style/secondary text)
+                            (apply str (repeat (max 0 (- inner (count text))) " "))
+                            (style/sgr "2" "│"))))
         border (fn [left right] (str " " (style/sgr "2" (str left (apply str (repeat inner "─")) right))))
         window (menu/render-window
                 items selected capacity (+ capacity 2)
-                (fn [index {:keys [label desc description url]}]
+                (fn [index {:keys [id label desc description url]}]
                   (let [focused? (= index selected)
                         suffix (if (and focused? url) open-in-browser-suffix "")
                         label-room (max 1 (- inner 4 (count suffix)))
                         content (str (if focused? "  > " "    ")
                                      (fit-repl-text
                                       (str (format (str "%-" (max 1 label-width) "s") label)
-                                           "  " (or desc description "")) label-room)
+                                           "  "
+                                           (if installed
+                                             (str (format (str "%-" (max 1 desc-width) "s")
+                                                          (or desc description ""))
+                                                  "  "
+                                                  (when (contains? installed id) installed-mark))
+                                             (or desc description "")))
+                                      label-room)
                                      suffix)
                         row (str " " (style/sgr "2" "│")
                                  (if focused? (style/primary content) content)
@@ -1744,6 +1770,7 @@
                       true (conj row))))
                 (partial render-menu-overflow-row inner))]
     (str/join "\n" (concat [(border "╭" "╮")]
+                           (when header-row [header-row (border "├" "┤")])
                            (menu-window-rows window inner (not (false? padded?)))
                            [(border "╰" "╯")]))))
 
@@ -1902,7 +1929,8 @@
          (cond
            (= step :repl-menu)
            (render-repl-rows (repls/available-options) (:menu-idx state)
-                             (:term-width state) (max 1 (- (:term-height state) 12)) false)
+                             (:term-width state) (max 1 (- (:term-height state) 14)) false true
+                             {:installed (or (:repl-installed state) #{})})
            (= step :resources)
            (render-resource-list items (:menu-idx state) (:term-width state)
                                  capacity)
@@ -2306,6 +2334,7 @@
   (-> state
       (assoc :step :repl-menu
              :menu-idx (or (:repl-menu-idx state) 0)
+             :repl-installed (repls/installed-ids)
              :done? false
              :exit-code nil
              :error nil)
