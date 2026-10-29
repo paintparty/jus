@@ -23,7 +23,7 @@
 
 (def version
   "The current jus release version."
-  "0.3.0")
+  "0.4.0")
 
 (def bbtl-url "https://github.com/paintparty/bbtl")
 
@@ -243,7 +243,7 @@
   (boolean (some #{step} [:main-menu :repl-menu :resources])))
 
 (def about-content
-  (str "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new) " deps-new-version ".\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty"))
+  (str "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new) " deps-new-version ".\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty\n\nVersion: [" version "](https://github.com/paintparty/jus/releases/tag/v" version ")"))
 
 (defn- resource-items [state]
   (or (peek (:resource-stack state)) data/community-resources))
