@@ -1420,12 +1420,14 @@
        (apply str (repeat (max 0 inner-w) " "))
        (style/secondary "│")))
 
-(defn- menu-window-rows [window inner-w]
-  (concat (when (zero? (:hidden-above window))
-            [(menu-blank-row inner-w)])
-          (:lines window)
-          (when (zero? (:hidden-below window))
-            [(menu-blank-row inner-w)])))
+(defn- menu-window-rows
+  ([window inner-w] (menu-window-rows window inner-w true))
+  ([window inner-w padded?]
+   (concat (when (and padded? (zero? (:hidden-above window)))
+             [(menu-blank-row inner-w)])
+           (:lines window)
+           (when (and padded? (zero? (:hidden-below window)))
+             [(menu-blank-row inner-w)]))))
 
 (defn render-toggle
   "Vertical YES/NO list with full-width bordered box; selected item is emphasized."
@@ -1716,7 +1718,7 @@
         (if (< width 2) (subs text 0 width) (str (subs text 0 (dec width)) "…")))))
 
 (defn- render-repl-rows
-  [items selected width height separators?]
+  [items selected width height separators? & [padded?]]
   (let [inner (max 4 (- width 4))
         capacity (max 1 height)
         label-width (apply max 0 (map #(count (:label %)) items))
@@ -1742,7 +1744,7 @@
                       true (conj row))))
                 (partial render-menu-overflow-row inner))]
     (str/join "\n" (concat [(border "╭" "╮")]
-                           (menu-window-rows window inner)
+                           (menu-window-rows window inner (not (false? padded?)))
                            [(border "╰" "╯")]))))
 
 (defn- render-repl-install-screen
@@ -1804,7 +1806,8 @@
                               "Enlarge terminal to view the manual command."
                               content-width)))
         box-budget (max 3 (- height (count heading) (count unavailable-note) (count helper) shell-lines))
-        capacity (max 1 (min (count items) (- box-budget 2)))
+        padded? (>= box-budget 5)
+        capacity (max 1 (min (count items) (- box-budget (if padded? 4 2))))
         window (menu/visible-window items selected capacity)
         overflow-row-count (count (filter pos? [(:hidden-above window)
                                                 (:hidden-below window)]))
@@ -1835,7 +1838,7 @@
            (indent-lines heading)
            (when unavailable? (str "\n" (indent-lines unavailable-note)))
            "\n"
-           (render-repl-rows items selected width capacity false)
+           (render-repl-rows items selected width capacity false padded?)
            (when (seq helper)
              (str "\n" (helper-slot helper helper-tone)))
            "\n"

@@ -12,6 +12,7 @@
   (let [in  (ByteArrayInputStream. (byte-array 0))
         out (ByteArrayOutputStream.)
         terminal (-> (TerminalBuilder/builder)
+                     (.type "xterm-256color")
                      (.dumb true)
                      (.streams in out)
                      (.build))]

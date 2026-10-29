@@ -1787,7 +1787,7 @@
         output (with-redefs [program/run (fn [_] final-state)]
                  (with-out-str (core/-main)))]
     (is (str/starts-with? output "\033[H\033[2J\033]52;c;"))
-    (is (str/includes? output "Copied project directory command to clipboard"))
+    (is (str/includes? output "Copied new project path to clipboard"))
     (is (str/includes? output "cd '/tmp/jus-persistent-hint/my-lib'"))))
 
 (deftest project-directory-command-quotes-special-paths
