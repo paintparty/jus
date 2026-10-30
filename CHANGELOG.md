@@ -1,6 +1,32 @@
 # Changelog
 [Jus](https://github.com/paintparty/jus): A TUI app for Clojure dialects 
 
+
+## 0.4.0
+
+#### Interactive Repl Launcher
+- Add `Installed?` column to the REPL dialect menu [#28](https://github.com/paintparty/jus/issues/28)
+- Show the alternate logo on Mac [#30](https://github.com/paintparty/jus/issues/30)
+
+#### New Project Wizard
+- Check that `clojure` is installed before entering the wizard. If it is missing, show install instructions on the main menu instead [#1](https://github.com/paintparty/jus/issues/1)
+- Format the generated `bb.edn` with a single task per line [#5](https://github.com/paintparty/jus/issues/5)
+- Add padding to the top, left, and bottom of the project details summary, and rename the "Type" label to "Project type"
+
+#### Community Resources
+- Use a single column layout below 62 columns. Only the focused item shows its description, in bold below the label. The menu height stays constant as focus moves. `render-resource-list` takes a new `:layout` option (`:two-column` or `:single-column`) so other menus can reuse it [#8](https://github.com/paintparty/jus/issues/8)
+
+#### Misc
+- Show the version number on the About page
+
+#### Deps
+- Update deps, including charm `0.2.123`. Ctrl-C is now delivered to the app (`:ctrl-c :message`) so the REPL launcher still exits with code `130`.
+
+#### Tests
+- Fix e2e tests for the new REPL list order and charm's Ctrl-C handling
+
+
+
 ## 0.3.0
 
 ### Changes
