@@ -2,7 +2,7 @@
 
  :deps    {org.clojure/clojure     {:mvn/version "1.12.6"}
            dev.weavejester/cljfmt  {:mvn/version "0.16.6"}
-           de.timokramer/charm.clj {:mvn/version "0.2.123"}
+           de.timokramer/charm.clj {:mvn/version "0.2.125"}
            babashka/fs             {:mvn/version "0.5.34"}
            babashka/process        {:mvn/version "0.6.25"}}
 
