@@ -2411,6 +2411,7 @@
                                                      [state nil])
                                       :update     #'update-fn
                                       :view       #'view
+                                      :ctrl-c     :message
                                       :alt-screen true})]
         (cond
           (= :repl (:action final-state))
