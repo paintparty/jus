@@ -930,13 +930,16 @@
           (animation/start-opening-animation state)
 
           :wizard
-          [(assoc (project-wizard-state (:global-config state))
-                  :global-config-exists? (get state
-                                              :global-config-exists?
-                                              true)
-                  :term-width (:term-width state)
-                  :term-height (:term-height state))
-           nil]
+          (if (executable-available? "clojure")
+            [(assoc (project-wizard-state (:global-config state))
+                    :global-config-exists? (get state
+                                                :global-config-exists?
+                                                true)
+                    :term-width (:term-width state)
+                    :term-height (:term-height state))
+             nil]
+            [(assoc state :error (repls/missing-executable-message "clojure"))
+             nil])
 
           :repl [(assoc state :step :repl-menu :menu-idx 0 :error nil
                         :repl-installed (repls/installed-ids)) nil]

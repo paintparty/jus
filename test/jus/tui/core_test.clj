@@ -1091,14 +1091,14 @@
                      :step :confirm)
         rendered (core/view state)]
     (is (str/includes? rendered
-                       (str "Type:            " (style/primary "Library"))))
+                       (str "Project type:    " (style/primary "Library"))))
     (is (str/includes? rendered
                        (str "Identity:        " (style/primary "io.github.example/my-lib"))))
     (is (str/includes? rendered
                        (str "SPDX license:    " (style/primary "EPL-2.0"))))
     (let [app-rendered (core/view (assoc state :template-idx 1))]
       (is (str/includes? app-rendered
-                         (str "Type:            " (style/primary "App")))))))
+                         (str "Project type:    " (style/primary "App")))))))
 
 (deftest location-browser-uses-tail-path-emphasis-and-resets-the-browse-choice
   (let [project-name (text-input/text-input :value "my-lib")
@@ -1983,3 +1983,15 @@
          (is (= "" output))
          (is @started)
          (is (= "" (str err)))))))
+
+(deftest main-menu-blocks-the-wizard-when-clojure-is-not-installed
+  (let [initial (assoc (core/main-menu-state example-global-config)
+                       :menu-idx (.indexOf (core/main-menu-choices) :wizard))]
+    (with-redefs-fn {#'core/executable-available? (constantly false)}
+      #(let [[blocked _] (core/update-fn initial (msg/key-press :enter))]
+         (is (= :main-menu (:step blocked)))
+         (is (re-find #"Required executable not found: clojure"
+                      (core/strip-ansi (:error blocked))))))
+    (with-redefs-fn {#'core/executable-available? (constantly true)}
+      #(let [[entered _] (core/update-fn initial (msg/key-press :enter))]
+         (is (= :project-template (:step entered)))))))
