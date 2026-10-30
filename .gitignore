@@ -7,3 +7,4 @@ target/
 *.jar
 .rebel_readline_history
 .DS_Store
+.batters

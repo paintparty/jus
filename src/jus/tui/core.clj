@@ -1672,11 +1672,11 @@
         template-label {"lib" "Library"
                         "app" "App"}
         row     (fn [label-str value-str]
-                  (let [content (str " " label-str value-str)
+                  (let [content (str "    " label-str value-str)
                         vis     (count (strip-ansi content))
                         pad     (apply str (repeat (max 0 (- inner-w vis)) " "))]
                     (str " " (style/secondary "│") content pad (style/secondary "│"))))
-        rows    [(row (lbl "Type:            ") (value (template-label (:template r))))
+        rows    [(row (lbl "Project type:    ") (value (template-label (:template r))))
                  (row (lbl "Identity:        ") (value (:name r)))
                  (row (lbl "Developer:       ")
                       (if-let [developer (:developer r)]
@@ -1685,7 +1685,9 @@
                              (style/secondary " (system default)"))))
                  (row (lbl "Description:     ") (value (:description r)))
                  (row (lbl "SPDX license:    ") (value (:license/id r)))]]
-    (str/join "\n" (concat [top] rows [bot]))))
+    (str/join "\n" (concat [top (menu-blank-row inner-w)]
+                           rows
+                           [(menu-blank-row inner-w) bot]))))
 
 (defn help-bar [step]
   (str "\n\n  "
