@@ -10,7 +10,7 @@
             [jus.tui.repls :as repls]
             [jus.tui.style :as style]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is]])
+            [clojure.test :refer [deftest is testing]])
   (:import (java.nio.file Files LinkOption Path)
            (java.nio.file.attribute FileAttribute)))
 
@@ -699,9 +699,10 @@
 (deftest active-resource-shows-its-url-below-the-global-column-gap
   (let [state (assoc (core/main-menu-state example-global-config)
                      :step :resources
-                     :term-width 50
+                     :term-width 90
                      :resource-stack [[{:label "A resource"
-                                        :desc "A description that is too long for this narrow menu"
+                                        :desc (str "A description that is too long for this menu "
+                                                   (apply str (repeat 60 "x")))
                                         :url "https://example.test"}]]
                      :resource-labels [])
         rendered (core/strip-ansi (core/view state))]
@@ -717,6 +718,36 @@
                           0
                           50
                           1))) 2))))))
+
+(deftest resource-menus-use-a-single-column-layout-on-narrow-terminals
+  (let [resources [{:label "Books" :desc "Official lists" :url "https://a.test"}
+                   {:label "Planet Clojure" :desc "Aggregator of community blog posts" :url "https://b.test"}
+                   {:label "Learning" :desc "Opinionated" :url "https://c.test"}]
+        render    (fn [layout]
+                    (core/strip-ansi
+                     (core/render-resource-list resources 1 60 10 {:layout layout})))
+        single    (render :single-column)]
+    (testing "single column shows the description only for the focused item, below its label"
+      (is (str/includes? single "> Planet Clojure"))
+      (is (str/includes? single "      Aggregator of community blog posts ↗"))
+      (is (not (str/includes? single "Official lists")))
+      (is (not (str/includes? single "Opinionated"))))
+    (testing "two column is the default and keeps descriptions beside labels"
+      (is (str/includes? (render :two-column) "Books            Official lists"))
+      (is (= (core/render-resource-list resources 1 60 10)
+             (core/render-resource-list resources 1 60 10 {:layout :two-column}))))
+    (testing "the resources view picks the layout from the terminal width"
+      (let [state (assoc (core/main-menu-state example-global-config)
+                         :step :resources
+                         :menu-idx 1
+                         :resource-stack [resources]
+                         :resource-labels [])]
+        (is (not (str/includes?
+                  (core/strip-ansi (core/view (assoc state :term-width 60)))
+                  "Official lists")))
+        (is (str/includes?
+             (core/strip-ansi (core/view (assoc state :term-width 100)))
+             "Official lists"))))))
 
 (deftest new-project-opens-the-project-wizard-and-returns-to-main-menu
   (with-redefs [core/dev-success-sequence? false
@@ -1995,3 +2026,15 @@
     (with-redefs-fn {#'core/executable-available? (constantly true)}
       #(let [[entered _] (core/update-fn initial (msg/key-press :enter))]
          (is (= :project-template (:step entered)))))))
+
+(deftest single-column-resource-menu-keeps-a-constant-height
+  (let [resources [{:label "Books" :desc "Official lists" :url "https://a.test"}
+                   {:label "Planet Clojure" :desc "Aggregator" :url "https://b.test"}
+                   {:label "No description"}]
+        height    (fn [idx]
+                    (count (str/split-lines
+                            (core/render-resource-list resources idx 60 10
+                                                       {:layout :single-column}))))]
+    (is (= 1 (count (distinct (map height (range 3))))))
+    (is (str/includes? (core/render-resource-list resources 1 60 10 {:layout :single-column})
+                       (style/primary "      Aggregator")))))

@@ -43,6 +43,11 @@
   "Number of spaces between columns in menu rows."
   3)
 
+(def resource-single-column-width
+  "Terminal width below which community resource menus use the single column
+  layout."
+  62)
+
 (defn- main-menu-logo-prefix
   []
   (str (apply str (repeat (:row style/main-menu-logo-position) "\n"))
@@ -1524,41 +1529,80 @@
                    (partial render-menu-overflow-row inner-w))]
     (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot]))))
 
+(defn- truncate-with-ellipsis
+  [text width]
+  (let [text  (str text)
+        width (max 0 width)]
+    (cond
+      (<= (count text) width) text
+      (<= width 3)            (subs text 0 width)
+      :else                   (str (subs text 0 (- width 3)) "..."))))
+
+(defn- single-column-resource-lines
+  "Lines for one item in the single column layout. The description is shown
+  only for the focused item, indented below the label and emphasized like it.
+  Every item takes exactly two rows (the second is blank when not focused or
+  when there is no description) so focus moving never changes the menu height."
+  [{:keys [label desc url]} selected? inner-w]
+  (let [row       (fn [styled visible-len]
+                    (str " " (style/secondary "│")
+                         styled
+                         (apply str (repeat (max 0 (- inner-w visible-len)) " "))
+                         (style/secondary "│")))
+        prefix    (if selected? "  > " "    ")
+        label-row (let [text (truncate-with-ellipsis (str prefix label) inner-w)]
+                    (row (if selected? (style/primary text) text) (count text)))
+        suffix    (if (and selected? url) open-in-browser-suffix "")
+        indent    "      "
+        desc-text (when (and selected? (seq desc))
+                    (truncate-with-ellipsis
+                     desc
+                     (- inner-w (count indent) (count suffix))))
+        desc-row  (when desc-text
+                    (row (str (style/primary (str indent desc-text)) suffix)
+                         (+ (count indent) (count desc-text) (count suffix))))]
+    [label-row (or desc-row (row "" 0))]))
+
 (defn render-resource-list
-  "Render resource labels and descriptions in two columns, without URLs."
-  [items selected-idx term-width capacity]
-  (let [inner-w  (- term-width 4)
-        label-w  (apply max 0 (map #(count (:label %)) items))
-        h-bar    (apply str (repeat (max 0 inner-w) "─"))
-        top      (str " " (style/secondary (str "╭" h-bar "╮")))
-        bot      (str " " (style/secondary (str "╰" h-bar "╯")))
-        window   (menu/render-window
-                  items selected-idx capacity (+ capacity 2)
-                  (fn [index {:keys [label desc url]}]
-                    (let [selected? (= index selected-idx)
-                          prefix    (if selected? "  > " "    ")
-                          suffix    (if (and selected? url)
-                                      open-in-browser-suffix
-                                      "")
-                          desc-w    (max 0
-                                         (- inner-w (count prefix) label-w menu-column-gap
-                                            (if url 3 0)))
-                          desc      (let [description (str (or desc ""))]
-                                      (cond
-                                        (<= (count description) desc-w) description
-                                        (<= desc-w 3) (subs description 0 desc-w)
-                                        :else (str (subs description 0 (- desc-w 3)) "...")))
-                          content   (str prefix
-                                         (format (str "%-" label-w "s") label)
-                                         (apply str (repeat menu-column-gap " "))
-                                         desc
-                                         suffix)
-                          pad       (apply str (repeat (max 0 (- inner-w (count content))) " "))]
-                      (str " " (style/secondary "│")
-                           (if selected? (style/primary content) content)
-                           pad (style/secondary "│"))))
-                  (partial render-menu-overflow-row inner-w))]
-    (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot]))))
+  "Render resource labels and descriptions, without URLs.
+  Options:
+    :layout  :two-column (default) shows label and description side by side.
+             :single-column shows each label on its own row and the
+             description of the focused item only, indented below it."
+  ([items selected-idx term-width capacity]
+   (render-resource-list items selected-idx term-width capacity nil))
+  ([items selected-idx term-width capacity {:keys [layout]}]
+   (let [inner-w       (- term-width 4)
+         single-column? (= :single-column layout)
+         label-w       (apply max 0 (map #(count (:label %)) items))
+         h-bar         (apply str (repeat (max 0 inner-w) "─"))
+         top           (str " " (style/secondary (str "╭" h-bar "╮")))
+         bot           (str " " (style/secondary (str "╰" h-bar "╯")))
+         window        (menu/render-window
+                        items selected-idx capacity (+ capacity 2)
+                        (fn [index {:keys [label desc url] :as item}]
+                          (let [selected? (= index selected-idx)]
+                            (if single-column?
+                              (single-column-resource-lines item selected? inner-w)
+                              (let [prefix  (if selected? "  > " "    ")
+                                    suffix  (if (and selected? url)
+                                              open-in-browser-suffix
+                                              "")
+                                    desc-w  (max 0
+                                                 (- inner-w (count prefix) label-w menu-column-gap
+                                                    (if url 3 0)))
+                                    desc    (truncate-with-ellipsis (or desc "") desc-w)
+                                    content (str prefix
+                                                 (format (str "%-" label-w "s") label)
+                                                 (apply str (repeat menu-column-gap " "))
+                                                 desc
+                                                 suffix)
+                                    pad     (apply str (repeat (max 0 (- inner-w (count content))) " "))]
+                                (str " " (style/secondary "│")
+                                     (if selected? (style/primary content) content)
+                                     pad (style/secondary "│"))))))
+                        (partial render-menu-overflow-row inner-w))]
+     (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot])))))
 
 (def focused-item-arrow
   (style/primary ">"))
@@ -1938,7 +1982,11 @@
                              {:installed (or (:repl-installed state) #{})})
            (= step :resources)
            (render-resource-list items (:menu-idx state) (:term-width state)
-                                 capacity)
+                                 capacity
+                                 {:layout (if (< (:term-width state)
+                                                 resource-single-column-width)
+                                            :single-column
+                                            :two-column)})
            :else (render-list items (:menu-idx state) (:term-width state)
                               capacity))
          (when active-url
