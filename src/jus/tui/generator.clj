@@ -1,5 +1,7 @@
 (ns jus.tui.generator
   (:require [cljfmt.core :as cljfmt]
+            [rewrite-clj.node :as node]
+            [rewrite-clj.parser :as parser]
             [clojure.java.io :as io]
             [clojure.string :as str])
   (:import (java.nio.file FileVisitOption Files LinkOption Path Paths)
@@ -133,11 +135,103 @@
     (with-open [stream stream]
       (slurp stream))))
 
+;; Single-column layout for bb.edn. cljfmt only adjusts whitespace and never
+;; moves a value to a new line, so the line breaks are added here first.
+
+(defn- comment-node? [n] (= :comment (node/tag n)))
+
+(defn- trailing-newline? [nodes]
+  (some-> (peek nodes) node/string (str/ends-with? "\n")))
+
+(defn- ensure-newline [nodes]
+  (if (trailing-newline? nodes) nodes (conj nodes (node/newlines 1))))
+
+(defn- sexpr-or-nil [n]
+  (try (node/sexpr n) (catch Exception _ nil)))
+
+(defn- map-items
+  "Splits map children into :form and :comment items. A comment on the same
+  line as the preceding form is marked :trailing?."
+  [children]
+  (loop [[n & more] children, items [], line-break? true]
+    (cond
+      (nil? n) items
+      (node/linebreak? n) (recur more items true)
+      (node/whitespace? n) (recur more items line-break?)
+      (comment-node? n) (recur more (conj items {:comment n :trailing? (not line-break?)}) true)
+      :else (recur more (conj items {:form n}) false))))
+
+(defn- single-column-map
+  "Puts each key and its value on separate lines, with a blank line between
+  entries. Comments stay attached to the entry that follows them. Returns the
+  map node unchanged if its forms are not key/value pairs."
+  [map-node indent]
+  (let [items  (map-items (node/children map-node))
+        indent (node/whitespace-node (apply str (repeat indent " ")))
+        gap    (fn [out] (if (seq out) (conj (ensure-newline out) (node/newlines 1)) out))
+        indent-after (fn [out] (if (seq out) (conj out indent) out))]
+    (if (odd? (count (filter :form items)))
+      map-node
+      (loop [[item & more] items, out [], key? true, leading? false]
+        (cond
+          (nil? item)
+          (node/replace-children map-node out)
+
+          (:trailing? item)
+          (recur more (conj out (node/whitespace-node " ") (:comment item)) key? leading?)
+
+          (:comment item)
+          (recur more
+                 (conj (indent-after (if leading? out (gap out))) (:comment item))
+                 key?
+                 true)
+
+          key?
+          (recur more
+                 (conj (indent-after (if leading? out (gap out))) (:form item))
+                 false
+                 false)
+
+          :else
+          (recur more
+                 (conj out (node/newlines 1) indent (:form item))
+                 true
+                 false))))))
+
+(defn- single-column-tasks
+  "Applies `single-column-map` to the value of :tasks in a bb.edn map node."
+  [map-node]
+  (let [forms (remove node/whitespace-or-comment? (node/children map-node))
+        tasks (some (fn [[k v]] (when (= :tasks (sexpr-or-nil k)) v))
+                    (partition 2 forms))]
+    (if (and tasks (= :map (node/tag tasks)))
+      (node/replace-children
+       map-node
+       (mapv #(if (identical? % tasks) (single-column-map tasks 2) %) (node/children map-node)))
+      map-node)))
+
+(defn- single-column-bb-edn
+  "Lays out the top-level map and the :tasks map of bb.edn source one key and
+  value per line."
+  [source]
+  (let [root (parser/parse-string-all source)
+        map-node (first (filter #(= :map (node/tag %)) (node/children root)))]
+    (if-not map-node
+      source
+      (node/string
+       (node/replace-children
+        root
+        (mapv #(if (identical? % map-node)
+                 (single-column-map (single-column-tasks %) 1)
+                 %)
+              (node/children root)))))))
+
 (defn- format-generated-bb-edn! [target-dir]
   (let [bb-edn (io/file target-dir "bb.edn")]
     (when (.isFile bb-edn)
       (-> (slurp bb-edn)
           (str/replace #":require\b" ":requires")
+          single-column-bb-edn
           (cljfmt/reformat-string {:align-map-columns? true})
           (as-> formatted (spit bb-edn formatted))))))
 

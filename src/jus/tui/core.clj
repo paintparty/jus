@@ -23,7 +23,7 @@
 
 (def version
   "The current jus release version."
-  "0.3.0")
+  "0.4.0")
 
 (def bbtl-url "https://github.com/paintparty/bbtl")
 
@@ -42,6 +42,11 @@
 (def menu-column-gap
   "Number of spaces between columns in menu rows."
   3)
+
+(def resource-single-column-width
+  "Terminal width below which community resource menus use the single column
+  layout."
+  62)
 
 (defn- main-menu-logo-prefix
   []
@@ -243,7 +248,7 @@
   (boolean (some #{step} [:main-menu :repl-menu :resources])))
 
 (def about-content
-  (str "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new) " deps-new-version ".\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty"))
+  (str "Jus is a TUI app for Clojure dialects.\n\nScaffold new projects, launch REPLs, and explore community resources.\n\nBuilt with [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj) + [cljfmt](https://github.com/weavejester/cljfmt).\n\nThe New Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new) " deps-new-version ".\n\nProject Repo: https://github.com/paintparty/jus\n\nContribute or sponsor the project: https://github.com/sponsors/paintparty\n\nVersion: [" version "](https://github.com/paintparty/jus/releases/tag/v" version ")"))
 
 (defn- resource-items [state]
   (or (peek (:resource-stack state)) data/community-resources))
@@ -704,6 +709,7 @@
   [state]
   (-> state
       (assoc :step :repl-menu :menu-idx (or (:repl-menu-idx state) 0)
+             :repl-installed (repls/installed-ids)
              :error nil :action nil)
       (dissoc :repl-install-copy-mode :repl-executable)))
 
@@ -929,15 +935,19 @@
           (animation/start-opening-animation state)
 
           :wizard
-          [(assoc (project-wizard-state (:global-config state))
-                  :global-config-exists? (get state
-                                              :global-config-exists?
-                                              true)
-                  :term-width (:term-width state)
-                  :term-height (:term-height state))
-           nil]
+          (if (executable-available? "clojure")
+            [(assoc (project-wizard-state (:global-config state))
+                    :global-config-exists? (get state
+                                                :global-config-exists?
+                                                true)
+                    :term-width (:term-width state)
+                    :term-height (:term-height state))
+             nil]
+            [(assoc state :error (repls/missing-executable-message "clojure"))
+             nil])
 
-          :repl [(assoc state :step :repl-menu :menu-idx 0 :error nil) nil]
+          :repl [(assoc state :step :repl-menu :menu-idx 0 :error nil
+                        :repl-installed (repls/installed-ids)) nil]
 
           :resources
           [(assoc state :step :resources
@@ -1420,12 +1430,14 @@
        (apply str (repeat (max 0 inner-w) " "))
        (style/secondary "│")))
 
-(defn- menu-window-rows [window inner-w]
-  (concat (when (zero? (:hidden-above window))
-            [(menu-blank-row inner-w)])
-          (:lines window)
-          (when (zero? (:hidden-below window))
-            [(menu-blank-row inner-w)])))
+(defn- menu-window-rows
+  ([window inner-w] (menu-window-rows window inner-w true))
+  ([window inner-w padded?]
+   (concat (when (and padded? (zero? (:hidden-above window)))
+             [(menu-blank-row inner-w)])
+           (:lines window)
+           (when (and padded? (zero? (:hidden-below window)))
+             [(menu-blank-row inner-w)]))))
 
 (defn render-toggle
   "Vertical YES/NO list with full-width bordered box; selected item is emphasized."
@@ -1517,41 +1529,80 @@
                    (partial render-menu-overflow-row inner-w))]
     (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot]))))
 
+(defn- truncate-with-ellipsis
+  [text width]
+  (let [text  (str text)
+        width (max 0 width)]
+    (cond
+      (<= (count text) width) text
+      (<= width 3)            (subs text 0 width)
+      :else                   (str (subs text 0 (- width 3)) "..."))))
+
+(defn- single-column-resource-lines
+  "Lines for one item in the single column layout. The description is shown
+  only for the focused item, indented below the label and emphasized like it.
+  Every item takes exactly two rows (the second is blank when not focused or
+  when there is no description) so focus moving never changes the menu height."
+  [{:keys [label desc url]} selected? inner-w]
+  (let [row       (fn [styled visible-len]
+                    (str " " (style/secondary "│")
+                         styled
+                         (apply str (repeat (max 0 (- inner-w visible-len)) " "))
+                         (style/secondary "│")))
+        prefix    (if selected? "  > " "    ")
+        label-row (let [text (truncate-with-ellipsis (str prefix label) inner-w)]
+                    (row (if selected? (style/primary text) text) (count text)))
+        suffix    (if (and selected? url) open-in-browser-suffix "")
+        indent    "      "
+        desc-text (when (and selected? (seq desc))
+                    (truncate-with-ellipsis
+                     desc
+                     (- inner-w (count indent) (count suffix))))
+        desc-row  (when desc-text
+                    (row (str (style/primary (str indent desc-text)) suffix)
+                         (+ (count indent) (count desc-text) (count suffix))))]
+    [label-row (or desc-row (row "" 0))]))
+
 (defn render-resource-list
-  "Render resource labels and descriptions in two columns, without URLs."
-  [items selected-idx term-width capacity]
-  (let [inner-w  (- term-width 4)
-        label-w  (apply max 0 (map #(count (:label %)) items))
-        h-bar    (apply str (repeat (max 0 inner-w) "─"))
-        top      (str " " (style/secondary (str "╭" h-bar "╮")))
-        bot      (str " " (style/secondary (str "╰" h-bar "╯")))
-        window   (menu/render-window
-                  items selected-idx capacity (+ capacity 2)
-                  (fn [index {:keys [label desc url]}]
-                    (let [selected? (= index selected-idx)
-                          prefix    (if selected? "  > " "    ")
-                          suffix    (if (and selected? url)
-                                      open-in-browser-suffix
-                                      "")
-                          desc-w    (max 0
-                                         (- inner-w (count prefix) label-w menu-column-gap
-                                            (if url 3 0)))
-                          desc      (let [description (str (or desc ""))]
-                                      (cond
-                                        (<= (count description) desc-w) description
-                                        (<= desc-w 3) (subs description 0 desc-w)
-                                        :else (str (subs description 0 (- desc-w 3)) "...")))
-                          content   (str prefix
-                                         (format (str "%-" label-w "s") label)
-                                         (apply str (repeat menu-column-gap " "))
-                                         desc
-                                         suffix)
-                          pad       (apply str (repeat (max 0 (- inner-w (count content))) " "))]
-                      (str " " (style/secondary "│")
-                           (if selected? (style/primary content) content)
-                           pad (style/secondary "│"))))
-                  (partial render-menu-overflow-row inner-w))]
-    (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot]))))
+  "Render resource labels and descriptions, without URLs.
+  Options:
+    :layout  :two-column (default) shows label and description side by side.
+             :single-column shows each label on its own row and the
+             description of the focused item only, indented below it."
+  ([items selected-idx term-width capacity]
+   (render-resource-list items selected-idx term-width capacity nil))
+  ([items selected-idx term-width capacity {:keys [layout]}]
+   (let [inner-w       (- term-width 4)
+         single-column? (= :single-column layout)
+         label-w       (apply max 0 (map #(count (:label %)) items))
+         h-bar         (apply str (repeat (max 0 inner-w) "─"))
+         top           (str " " (style/secondary (str "╭" h-bar "╮")))
+         bot           (str " " (style/secondary (str "╰" h-bar "╯")))
+         window        (menu/render-window
+                        items selected-idx capacity (+ capacity 2)
+                        (fn [index {:keys [label desc url] :as item}]
+                          (let [selected? (= index selected-idx)]
+                            (if single-column?
+                              (single-column-resource-lines item selected? inner-w)
+                              (let [prefix  (if selected? "  > " "    ")
+                                    suffix  (if (and selected? url)
+                                              open-in-browser-suffix
+                                              "")
+                                    desc-w  (max 0
+                                                 (- inner-w (count prefix) label-w menu-column-gap
+                                                    (if url 3 0)))
+                                    desc    (truncate-with-ellipsis (or desc "") desc-w)
+                                    content (str prefix
+                                                 (format (str "%-" label-w "s") label)
+                                                 (apply str (repeat menu-column-gap " "))
+                                                 desc
+                                                 suffix)
+                                    pad     (apply str (repeat (max 0 (- inner-w (count content))) " "))]
+                                (str " " (style/secondary "│")
+                                     (if selected? (style/primary content) content)
+                                     pad (style/secondary "│"))))))
+                        (partial render-menu-overflow-row inner-w))]
+     (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot])))))
 
 (def focused-item-arrow
   (style/primary ">"))
@@ -1668,11 +1719,11 @@
         template-label {"lib" "Library"
                         "app" "App"}
         row     (fn [label-str value-str]
-                  (let [content (str " " label-str value-str)
+                  (let [content (str "    " label-str value-str)
                         vis     (count (strip-ansi content))
                         pad     (apply str (repeat (max 0 (- inner-w vis)) " "))]
                     (str " " (style/secondary "│") content pad (style/secondary "│"))))
-        rows    [(row (lbl "Type:            ") (value (template-label (:template r))))
+        rows    [(row (lbl "Project type:    ") (value (template-label (:template r))))
                  (row (lbl "Identity:        ") (value (:name r)))
                  (row (lbl "Developer:       ")
                       (if-let [developer (:developer r)]
@@ -1681,7 +1732,9 @@
                              (style/secondary " (system default)"))))
                  (row (lbl "Description:     ") (value (:description r)))
                  (row (lbl "SPDX license:    ") (value (:license/id r)))]]
-    (str/join "\n" (concat [top] rows [bot]))))
+    (str/join "\n" (concat [top (menu-blank-row inner-w)]
+                           rows
+                           [(menu-blank-row inner-w) bot]))))
 
 (defn help-bar [step]
   (str "\n\n  "
@@ -1715,22 +1768,46 @@
     (if (<= (count text) width) text
         (if (< width 2) (subs text 0 width) (str (subs text 0 (dec width)) "…")))))
 
+(def ^:private installed-mark "✓")
+
 (defn- render-repl-rows
-  [items selected width height separators?]
+  "Bordered REPL list. With `:installed` (a set of ids), renders a Dialect, Host,
+  Installed? header row, a divider below it, and a check column."
+  [items selected width height separators? & [padded? {:keys [installed]}]]
   (let [inner (max 4 (- width 4))
         capacity (max 1 height)
         label-width (apply max 0 (map #(count (:label %)) items))
+        desc-width (apply max 0 (map #(count (or (:desc %) (:description %) "")) items))
+        header-row (when installed
+                     (let [text (fit-repl-text
+                                 (str "    "
+                                      (format (str "%-" (max 1 label-width) "s") "Dialect")
+                                      "  "
+                                      (format (str "%-" (max 1 desc-width) "s") "Host")
+                                      "  Installed?")
+                                 inner)]
+                       (str " " (style/sgr "2" "│")
+                            (style/secondary text)
+                            (apply str (repeat (max 0 (- inner (count text))) " "))
+                            (style/sgr "2" "│"))))
         border (fn [left right] (str " " (style/sgr "2" (str left (apply str (repeat inner "─")) right))))
         window (menu/render-window
                 items selected capacity (+ capacity 2)
-                (fn [index {:keys [label desc description url]}]
+                (fn [index {:keys [id label desc description url]}]
                   (let [focused? (= index selected)
                         suffix (if (and focused? url) open-in-browser-suffix "")
                         label-room (max 1 (- inner 4 (count suffix)))
                         content (str (if focused? "  > " "    ")
                                      (fit-repl-text
                                       (str (format (str "%-" (max 1 label-width) "s") label)
-                                           "  " (or desc description "")) label-room)
+                                           "  "
+                                           (if installed
+                                             (str (format (str "%-" (max 1 desc-width) "s")
+                                                          (or desc description ""))
+                                                  "  "
+                                                  (when (contains? installed id) installed-mark))
+                                             (or desc description "")))
+                                      label-room)
                                      suffix)
                         row (str " " (style/sgr "2" "│")
                                  (if focused? (style/primary content) content)
@@ -1742,7 +1819,8 @@
                       true (conj row))))
                 (partial render-menu-overflow-row inner))]
     (str/join "\n" (concat [(border "╭" "╮")]
-                           (menu-window-rows window inner)
+                           (when header-row [header-row (border "├" "┤")])
+                           (menu-window-rows window inner (not (false? padded?)))
                            [(border "╰" "╯")]))))
 
 (defn- render-repl-install-screen
@@ -1804,7 +1882,8 @@
                               "Enlarge terminal to view the manual command."
                               content-width)))
         box-budget (max 3 (- height (count heading) (count unavailable-note) (count helper) shell-lines))
-        capacity (max 1 (min (count items) (- box-budget 2)))
+        padded? (>= box-budget 5)
+        capacity (max 1 (min (count items) (- box-budget (if padded? 4 2))))
         window (menu/visible-window items selected capacity)
         overflow-row-count (count (filter pos? [(:hidden-above window)
                                                 (:hidden-below window)]))
@@ -1835,7 +1914,7 @@
            (indent-lines heading)
            (when unavailable? (str "\n" (indent-lines unavailable-note)))
            "\n"
-           (render-repl-rows items selected width capacity false)
+           (render-repl-rows items selected width capacity false padded?)
            (when (seq helper)
              (str "\n" (helper-slot helper helper-tone)))
            "\n"
@@ -1899,10 +1978,15 @@
          (cond
            (= step :repl-menu)
            (render-repl-rows (repls/available-options) (:menu-idx state)
-                             (:term-width state) (max 1 (- (:term-height state) 12)) false)
+                             (:term-width state) (max 1 (- (:term-height state) 14)) false true
+                             {:installed (or (:repl-installed state) #{})})
            (= step :resources)
            (render-resource-list items (:menu-idx state) (:term-width state)
-                                 capacity)
+                                 capacity
+                                 {:layout (if (< (:term-width state)
+                                                 resource-single-column-width)
+                                            :single-column
+                                            :two-column)})
            :else (render-list items (:menu-idx state) (:term-width state)
                               capacity))
          (when active-url
@@ -2303,6 +2387,7 @@
   (-> state
       (assoc :step :repl-menu
              :menu-idx (or (:repl-menu-idx state) 0)
+             :repl-installed (repls/installed-ids)
              :done? false
              :exit-code nil
              :error nil)
@@ -2326,6 +2411,7 @@
                                                      [state nil])
                                       :update     #'update-fn
                                       :view       #'view
+                                      :ctrl-c     :message
                                       :alt-screen true})]
         (cond
           (= :repl (:action final-state))

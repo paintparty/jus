@@ -117,10 +117,34 @@
         (is (str/includes? (:out result) "Creating project from"))
         (is target)
         (is bb-edn)
-        (is (str/includes? bb-content ":min-bb-version \"1.13.222\""))
-        (is (str/includes? bb-content ":requires [build]"))
+        (is (str/includes? bb-content "\n :min-bb-version\n \"1.13.222\"\n"))
+        (is (str/includes? bb-content "\n {:requires\n  [build]\n"))
+        (is (str/includes? bb-content "\n\n  test\n  {:doc  "))
         (is (not (re-find #"(?m)^\s*:require\s" bb-content)))
         (is source)))))
+
+(deftest bb-edn-is-laid-out-in-a-single-column
+  (let [source "{:paths [\"src\"]\n ;; note\n :deps {a/b {:mvn/version \"1\"}}\n :tasks {:requires [[x :as y]]\n  t {:doc \"d\" ; trailing\n     :task (run)}\n  u {:task (run)}}}"
+        laid-out (#'generator/single-column-bb-edn source)]
+    (is (= (read-string source) (read-string laid-out)))
+    (is (= "{:paths
+ [\"src\"]
+
+ ;; note
+ :deps
+ {a/b {:mvn/version \"1\"}}
+
+ :tasks
+ {:requires
+  [[x :as y]]
+
+  t
+  {:doc \"d\" ; trailing
+     :task (run)}
+
+  u
+  {:task (run)}}}"
+           laid-out))))
 
 (deftest project-rooted-options-create-a-project-rooted-source-namespace
   (let [parent (temp-dir)

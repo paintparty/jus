@@ -12,6 +12,7 @@
   (let [in  (ByteArrayInputStream. (byte-array 0))
         out (ByteArrayOutputStream.)
         terminal (-> (TerminalBuilder/builder)
+                     (.type "xterm-256color")
                      (.dumb true)
                      (.streams in out)
                      (.build))]
@@ -46,7 +47,7 @@
                          "Built with Babashka + Charm + cljfmt."))
       (is (str/includes? (visible-text about-visible)
                          "https://github.com/paintparty/jus"))
-      (is (= 6 (count (re-seq #"\u001b\[4m" about-visible))))
+      (is (= 7 (count (re-seq #"\u001b\[4m" about-visible))))
       (is (every? #(<= (count %) 78)
                   (str/split-lines (visible-text about-visible))))
       (is (str/includes? (visible-text helper-visible) "in-1, a\n  tool for installing"))

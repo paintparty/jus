@@ -34,8 +34,8 @@
 (def not-mac? (not mac?))
 
 ;; Logo
-#_"☯"
-(def logo (if @windows-10? "*" "◒"))
+
+(def logo (cond @windows-10? "*" mac? "☯" :else "◒"))
 
 ;; Formatting
 (def margin-inline-start 2)

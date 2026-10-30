@@ -19,7 +19,7 @@
     :intel-mac-build-target? true}
    {:id                      :rebel
     :label                   "Clojure"
-    :description             "With rebel-readline (nicer REPL)"
+    :description             "With rebel-readline"
     :requires                ["clojure"]
     :intel-mac-build-target? true}
    {:id                      :cljr
@@ -338,4 +338,20 @@
          (some #(executable-path (io/file (install-prefix % env) "bin" executable))
                [:local :temporary])))))
 
+(defn installed?
+  "Whether the runtime for an option is available now. Checks the PATH and
+  in-1 wrappers for in-1 runtimes, and the PATH for the rest."
+  ([id] (installed? id (environment)))
+  ([id env]
+   (let [{:keys [installer requires]} (option id)]
+     (boolean
+      (if installer
+        (discover id env)
+        (and (seq requires)
+             (every? #(find-on-path % env) requires)))))))
 
+(defn installed-ids
+  "The set of ids in `available-options` that are installed."
+  []
+  (let [env (environment)]
+    (into #{} (comp (map :id) (filter #(installed? % env))) (available-options))))

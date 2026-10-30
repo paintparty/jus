@@ -13,7 +13,7 @@ set driver {
                                                   :menu-idx (.indexOf (mapv :id (repls/available-options))
                                                                       :glojure))
                                           nil])
-                            :update core/update-fn :view core/view :alt-screen true}))]
+                            :update core/update-fn :view core/view :ctrl-c :message :alt-screen true}))]
   (println "EXIT_CODE" (:exit-code state))
   (flush))
 }

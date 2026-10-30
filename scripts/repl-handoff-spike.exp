@@ -257,7 +257,7 @@ proc assert_jus_session_resume {} {
     timeout {fail "jus did not open its REPL picker"}
     eof {fail "jus exited before its REPL picker"}
   }
-  send -i $channel "\033\[B\033\[B\r"
+  send -i $channel "\033\[B\033\[B\033\[B\r"
   expect {
     -i $channel
     -re {user=>} {}
