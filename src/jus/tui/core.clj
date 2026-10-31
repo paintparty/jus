@@ -48,6 +48,12 @@
   layout."
   62)
 
+(defn- narrow-resource-menu?
+  "True when the terminal is narrow enough that the focused resource's
+  description is shown below the list instead of in a second column."
+  [state]
+  (< (:term-width state) resource-single-column-width))
+
 (defn- main-menu-logo-prefix
   []
   (str (apply str (repeat (:row style/main-menu-logo-position) "\n"))
@@ -1568,12 +1574,15 @@
   Options:
     :layout  :two-column (default) shows label and description side by side.
              :single-column shows each label on its own row and the
-             description of the focused item only, indented below it."
+             description of the focused item only, indented below it.
+             :desc-footer shows labels only. The caller renders the focused
+             description below the list."
   ([items selected-idx term-width capacity]
    (render-resource-list items selected-idx term-width capacity nil))
   ([items selected-idx term-width capacity {:keys [layout]}]
    (let [inner-w       (- term-width 4)
          single-column? (= :single-column layout)
+         desc-footer?  (= :desc-footer layout)
          label-w       (apply max 0 (map #(count (:label %)) items))
          h-bar         (apply str (repeat (max 0 inner-w) "─"))
          top           (str " " (style/secondary (str "╭" h-bar "╮")))
@@ -1592,11 +1601,15 @@
                                                  (- inner-w (count prefix) label-w menu-column-gap
                                                     (if url 3 0)))
                                     desc    (truncate-with-ellipsis (or desc "") desc-w)
-                                    content (str prefix
-                                                 (format (str "%-" label-w "s") label)
-                                                 (apply str (repeat menu-column-gap " "))
-                                                 desc
-                                                 suffix)
+                                    content (if desc-footer?
+                                              (truncate-with-ellipsis
+                                               (str prefix label suffix)
+                                               inner-w)
+                                              (str prefix
+                                                   (format (str "%-" label-w "s") label)
+                                                   (apply str (repeat menu-column-gap " "))
+                                                   desc
+                                                   suffix))
                                     pad     (apply str (repeat (max 0 (- inner-w (count content))) " "))]
                                 (str " " (style/secondary "│")
                                      (if selected? (style/primary content) content)
@@ -1955,13 +1968,16 @@
                                    (repls/available-options)))
                 :resources (resource-items state))
         active-url (:url (active-resource state))
+        active-desc (when (and (= step :resources) (narrow-resource-menu? state))
+                      (let [d (:desc (active-resource state))]
+                        (when (seq d) d)))
         error-message (:error state)
         error-lines (if error-message
                       (+ (count (str/split-lines error-message))
                          (if (= step :main-menu) 0 1))
                       0)
         capacity (menu-row-capacity state
-                                    (+ (if active-url 1 0) error-lines))]
+                                    (+ (if active-url 1 0) (if active-desc 1 0) error-lines))]
     (str (main-menu-logo-prefix)
          title
          (str "\n\n\n  "
@@ -1983,14 +1999,16 @@
            (= step :resources)
            (render-resource-list items (:menu-idx state) (:term-width state)
                                  capacity
-                                 {:layout (if (< (:term-width state)
-                                                 resource-single-column-width)
-                                            :single-column
+                                 {:layout (if (narrow-resource-menu? state)
+                                            :desc-footer
                                             :two-column)})
            :else (render-list items (:menu-idx state) (:term-width state)
                               capacity))
+         (when active-desc
+           (str "\n  " (truncate-with-ellipsis active-desc
+                                               (- (:term-width state) 4))))
          (when active-url
-           (str "\n  " (style/secondary active-url)))
+           (str "\n  " (style/secondary (str active-url " " open-in-browser-icon))))
          (when error-message
            (str (if (= step :main-menu) "\n  " "\n\n  ")
                 (style/error error-message)))

@@ -2038,3 +2038,9 @@
     (is (= 1 (count (distinct (map height (range 3))))))
     (is (str/includes? (core/render-resource-list resources 1 60 10 {:layout :single-column})
                        (style/primary "      Aggregator")))))
+
+(deftest desc-footer-layout-omits-descriptions-from-the-list
+  (let [resources [{:label "Books" :desc "Official lists" :url "https://a.test"}]
+        out       (core/render-resource-list resources 0 60 10 {:layout :desc-footer})]
+    (is (str/includes? out "Books"))
+    (is (not (str/includes? out "Official lists")))))
