@@ -58,6 +58,61 @@
 (def accent-italic-style (charm-style/style :fg accent-hex :italic true))
 (def italic-style (charm-style/style :italic true))
 
+(def flash-foreground-color-medium
+  "xterm 256 color id (midtone purple) for the Enter confirmation flash.
+  Charm downgrades it at render time to the detected color profile, so on a
+  16 color terminal it becomes the nearest basic color and on an ascii
+  terminal it is dropped, leaving only the bold frames visible."
+  141)
+
+(def flash-background-color
+  "xterm 256 color id (light lavender) for the background accent flash."
+  189)
+
+(def flash-foreground-color-dark
+  "xterm 256 color id (dark purple) for text in the background accent flash."
+  92)
+
+(def flash-foreground-color-light
+  "xterm 256 color id (light purple) for text in the background accent flash."
+  183)
+
+(def flash-foreground-color-adaptive
+  "Flash text color that contrasts with the terminal background: dark purple
+  on a light background, light purple on a dark one. Charm picks the variant
+  at render time from the background it detected at startup."
+  (charm-style/adaptive flash-foreground-color-dark
+                        flash-foreground-color-light))
+
+(def flash-presets
+  "Named Enter confirmation flashes, each a vector of frame styles."
+  (let [bold (charm-style/style :bold true)
+        bold-purple (charm-style/style 
+                     :bold true
+                     :fg flash-foreground-color-medium)]
+    {:foreground-accent
+     [bold-purple bold-purple bold-purple bold-purple]
+
+     :background-accent
+     (let [accent (charm-style/style
+                   :fg flash-foreground-color-adaptive
+                   #_:bg #_flash-background-color)]
+       [accent accent accent accent])}))
+
+(def flash-preset
+  "Which entry of `flash-presets` the app uses."
+  :foreground-accent
+  #_:background-accent
+  )
+
+(def flash-frame-styles
+  "Styles for the Enter confirmation flash, from the active preset."
+  (get flash-presets flash-preset))
+
+(def ^:dynamic *flash-frame*
+  "Index into `flash-frame-styles` while the flash is running, else nil."
+  nil)
+
 (defn style
   "Construct a Charm style."
   [& args]
@@ -113,6 +168,14 @@
   "Primary/emphasized text. Uses SGR bold with the user's terminal foreground."
   [s]
   (sgr "1" s))
+
+(defn selected
+  "Text of the focused menu row. Bold, or the current flash frame while the
+  Enter confirmation flash is running."
+  [s]
+  (if-let [frame *flash-frame*]
+    (charm-style/render (nth flash-frame-styles frame) s)
+    (primary s)))
 
 (defn primary-italic
   [s]

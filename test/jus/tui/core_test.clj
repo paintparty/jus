@@ -10,9 +10,12 @@
             [jus.tui.repls :as repls]
             [jus.tui.style :as style]
             [clojure.string :as str]
-            [clojure.test :refer [deftest is testing]])
+            [clojure.test :refer [deftest is testing use-fixtures]])
   (:import (java.nio.file Files LinkOption Path)
            (java.nio.file.attribute FileAttribute)))
+
+(use-fixtures :each
+  (fn [t] (with-redefs [core/flash-on-enter? false] (t))))
 
 (def ^:private example-global-config
   (config/project-config
@@ -2044,3 +2047,43 @@
         out       (core/render-resource-list resources 0 60 10 {:layout :desc-footer})]
     (is (str/includes? out "Books"))
     (is (not (str/includes? out "Official lists")))))
+
+(deftest enter-flash-delays-the-menu-action-until-the-last-frame
+  (with-redefs [core/flash-on-enter? true]
+    (let [state     {:step :resources :menu-idx 0 :term-width 80 :term-height 24}
+          [s0 cmd0] (core/update-fn state (msg/key-press :enter))
+          ticks     (count style/flash-frame-styles)
+          final     (loop [s s0 n 1]
+                      (let [[s' _] (core/update-fn s (msg/key-press "flash-tick"))]
+                        (if (and (:flash s') (< n 20)) (recur s' (inc n)) s')))]
+      (is (= 0 (get-in s0 [:flash :frame])))
+      (is (some? cmd0))
+      (is (= 4 ticks))
+      (is (nil? (:flash final)))
+      (is (str/includes? (style/render (nth style/flash-frame-styles 1) "x")
+                         "38;5;141"))
+      (binding [style/*flash-frame* 1]
+        (is (not= (style/selected "x") (style/primary "x")))))))
+
+(deftest background-accent-flash-text-adapts-to-the-terminal-background
+  (let [frame (nth (:background-accent style/flash-presets) 1)
+        render-on (fn [dark?]
+                    (binding [charm.style.color/*dark-background?* dark?]
+                      (style/render frame "x")))]
+    (is (str/includes? (render-on true) "38;5;183"))
+    (is (str/includes? (render-on false) "38;5;92"))))
+
+(deftest enter-flash-covers-wizard-list-steps-but-not-text-entry
+  (with-redefs [core/flash-on-enter? true]
+    (let [wizard (assoc (core/project-wizard-state {})
+                        :term-width 80 :term-height 24)
+          [flashing _] (core/update-fn wizard (msg/key-press :enter))
+          advanced     (loop [s flashing n 0]
+                         (let [[s' _] (core/update-fn s (msg/key-press "flash-tick"))]
+                           (if (and (:flash s') (< n 20)) (recur s' (inc n)) s')))
+          [typing _]   (core/update-fn (assoc wizard :step :project-name)
+                                       (msg/key-press :enter))]
+      (is (some? (:flash flashing)))
+      (is (= :project-template (:step flashing)))
+      (is (= :project-name (:step advanced)))
+      (is (nil? (:flash typing))))))

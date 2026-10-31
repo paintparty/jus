@@ -250,6 +250,21 @@
    :error         nil
    :done?         false})
 
+(defn- flash-step?
+  "True when Enter on this step confirms a focused list row, so the row
+  flashes before the action. Text entry steps and the summary have no
+  focused row and act immediately."
+  [state]
+  (case (:step state)
+    (:main-menu :repl-menu :resources
+     :project-template :source-layout :license :project-path
+     :parent-dir-select :path-confirm :path-confirm-final)
+    true
+
+    :group     (not (:group-entry? state))
+    :developer (boolean (seq (config/developers (:global-config state))))
+    false))
+
 (defn- menu-screen? [step]
   (boolean (some #{step} [:main-menu :repl-menu :resources])))
 
@@ -538,6 +553,46 @@
                 (assoc (main-menu-state {}) :global-config-exists? false)
                 (main-menu-state (config/load-config path)))]
     (animation/initialize-main-menu state)))
+
+(def flash-on-enter?
+  "Flash the focused menu row (bold, medium purple, bold)
+  before acting on Enter."
+  true)
+
+(def flash-frame-ms 14)
+
+(def ^:dynamic *skip-flash*
+  "Bound true while replaying the Enter that started a flash."
+  false)
+
+(defn flash-tick-cmd
+  "Async cmd that advances the Enter confirmation flash."
+  []
+  (program/cmd (fn []
+                 (Thread/sleep flash-frame-ms)
+                 (msg/key-press "flash-tick"))))
+
+(declare update-fn)
+
+(defn- update-flash
+  "Advance the flash on each tick. After the last frame, replay the Enter that
+  started it so the menu acts as if it had just been pressed."
+  [state msg]
+  (let [{:keys [frame] original :msg} (:flash state)
+        next-frame (inc frame)]
+    (cond
+      (msg/key-match? msg "ctrl+c")
+      (update-fn (dissoc state :flash) msg)
+
+      (not (and (msg/key-press? msg) (= "flash-tick" (:key msg))))
+      [state nil]
+
+      (< next-frame (count style/flash-frame-styles))
+      [(assoc-in state [:flash :frame] next-frame) (flash-tick-cmd)]
+
+      :else
+      (binding [*skip-flash* true]
+        (update-fn (dissoc state :flash) original)))))
 
 (defn generation-tick-cmd
   "Async cmd that advances the generation progress animation."
@@ -908,6 +963,15 @@
       [(assoc state :config-offer-idx 1) nil]
 
       :else [state nil])
+
+    (:flash state)
+    (update-flash state msg)
+
+    (and flash-on-enter?
+         (not *skip-flash*)
+         (flash-step? state)
+         (msg/key-match? msg "enter"))
+    [(assoc state :flash {:frame 0 :msg msg}) (flash-tick-cmd)]
 
     ;; Shared navigation for main, REPL, and resources menus.
     (menu-screen? (:step state))
@@ -1524,7 +1588,7 @@
                            prefix    (if selected? "  > " "    ")
                            text      (str prefix (item-text item))
                            pad       (apply str (repeat (max 0 (- inner-w (count text))) " "))
-                           style-fn  (cond selected? style/primary
+                           style-fn  (cond selected? style/selected
                                            confirm?   identity
                                            :else      identity)]
                        (str " "
@@ -1612,7 +1676,7 @@
                                                    suffix))
                                     pad     (apply str (repeat (max 0 (- inner-w (count content))) " "))]
                                 (str " " (style/secondary "│")
-                                     (if selected? (style/primary content) content)
+                                     (if selected? (style/selected content) content)
                                      pad (style/secondary "│"))))))
                         (partial render-menu-overflow-row inner-w))]
      (str/join "\n" (concat [top] (menu-window-rows window inner-w) [bot])))))
@@ -1637,8 +1701,8 @@
   (let [path  (str path)
         slash (str/last-index-of path "/")]
     (if (some? slash)
-      (str (subs path 0 (inc slash)) (style/primary (subs path (inc slash))))
-      (style/primary path))))
+      (str (subs path 0 (inc slash)) (style/selected (subs path (inc slash))))
+      (style/selected path))))
 
 (defn render-browse
   "Two-section bordered box for the browse-mode location picker.
@@ -1683,7 +1747,7 @@
                              plain-row (str (if selected? "  > " "    ") label)
                              pad       (apply str (repeat (max 0 (- inner-w (count plain-row))) " "))
                              row-text  (if selected?
-                                         (str "  " (style/primary (str "> " label)))
+                                         (str "  " (style/selected (str "> " label)))
                                          (str "    " label))]
                          (str " " side row-text pad side)))
                      (partial render-menu-overflow-row inner-w))]
@@ -1709,7 +1773,7 @@
                  plain     (str (if selected? "  > " "    ") (if selected? path+ path))
                  pad       (apply str (repeat (max 0 (- inner-w (count plain))) " "))
                  content   (str (if selected? (str "  " focused-item-arrow " ") "    ")
-                                (if selected? (style/primary path+) path))]
+                                (if selected? (style/selected path+) path))]
              (str " "
                   (style/secondary "│")
                   content
@@ -1823,7 +1887,7 @@
                                       label-room)
                                      suffix)
                         row (str " " (style/sgr "2" "│")
-                                 (if focused? (style/primary content) content)
+                                 (if focused? (style/selected content) content)
                                  (apply str (repeat (max 0 (- inner (count content))) " "))
                                  (style/sgr "2" "│"))]
                     (cond-> []
@@ -2028,8 +2092,15 @@
        (help-bar :about)
        "\n"))
 
+(declare view*)
+
 (defn view
   "Charm.clj view. Renders the current state to a string."
+  [state]
+  (binding [style/*flash-frame* (get-in state [:flash :frame])]
+    (view* state)))
+
+(defn- view*
   [state]
   (cond
     (:opening-animation state)
@@ -2257,7 +2328,7 @@
                                                 (str "  " focused-item-arrow " "
                                                      (if is-path?
                                                        (render-path-tail label)
-                                                       (style/primary label)))
+                                                       (style/selected label)))
                                                 (str "    " label))]
                                 (str " " side content pad side)))]
                (str/join "\n" [top-bar

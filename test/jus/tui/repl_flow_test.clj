@@ -20,7 +20,8 @@
                   (fn
                     ([] true)
                     ([os-name] (installation-supported? os-name)))]
-      (with-redefs [style/intel-mac? false]
+      (with-redefs [style/intel-mac? false
+                    core/flash-on-enter? false]
         (test-fn)))))
 
 (clojure.test/use-fixtures :each with-extended-platform)
