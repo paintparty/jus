@@ -235,9 +235,10 @@ proc assert_pre_readiness_cleanup {} {
   puts "PASS pre-readiness cleanup: startup failure and Ctrl-C both clear the spinner and release the PTY"
 }
 
-proc assert_jus_session_resume {} {
-  global cache_dir repo_root temp_root
-  set transcript_path [file join $temp_root "jus-session-resume.log"]
+proc assert_jus_session_resume {runtime down_count} {
+  global cache_dir repo_root temp_root runtime_label failure_pattern
+  set label $runtime_label($runtime)
+  set transcript_path [file join $temp_root "jus-$runtime-session-resume.log"]
   log_file -a -noappend $transcript_path
   spawn -noecho sh -c {stty rows 40 columns 120; cd "$1"; shift; exec "$@"} \
     sh $repo_root env "XDG_CACHE_HOME=$cache_dir" \
@@ -257,19 +258,25 @@ proc assert_jus_session_resume {} {
     timeout {fail "jus did not open its REPL picker"}
     eof {fail "jus exited before its REPL picker"}
   }
-  send -i $channel "\033\[B\033\[B\033\[B\r"
+  send -i $channel "[string repeat "\033\[B" $down_count]\r"
   expect {
     -i $channel
     -re {user=>} {}
-    timeout {fail "Babashka did not reach its prompt from jus"}
-    eof {fail "Babashka exited before its prompt from jus"}
+    timeout {fail "$label did not reach its prompt from jus"}
+    eof {fail "$label exited before its prompt from jus"}
   }
-  send -i $channel "\003"
-  expect {
-    -i $channel
-    -re {user=>} {}
-    timeout {fail "Babashka Ctrl-C did not return to its prompt under jus supervision"}
-    eof {fail "Babashka Ctrl-C unexpectedly exited under jus supervision"}
+  # Babashka intentionally exits on a second consecutive Ctrl-C.
+  set interrupt_count [expr {$runtime eq "rebel" ? 3 : 1}]
+  for {set interrupt 0} {$interrupt < $interrupt_count} {incr interrupt} {
+    send -i $channel "\003"
+    expect {
+      -i $channel
+      -re $failure_pattern {fail "$label Ctrl-C triggered a thread/startup failure under jus supervision"}
+      -re {user=>} {}
+      timeout {fail "$label Ctrl-C did not return to its prompt under jus supervision"}
+      eof {fail "$label Ctrl-C unexpectedly exited under jus supervision"}
+    }
+    after 250
   }
   send -i $channel "\004"
   expect {
@@ -281,15 +288,15 @@ proc assert_jus_session_resume {} {
   send -i $channel "\r"
   expect {
     -i $channel
-    -re {Starting Babashka\.\.\.} {}
-    timeout {fail "resumed REPL picker did not preserve the Babashka selection"}
-    eof {fail "jus exited before relaunching the selected Babashka runtime"}
+    -exact "Starting $label..." {}
+    timeout {fail "resumed REPL picker did not preserve the $label selection"}
+    eof {fail "jus exited before relaunching the selected $label runtime"}
   }
   expect {
     -i $channel
     -re {user=>} {}
-    timeout {fail "reselected Babashka did not reach its prompt"}
-    eof {fail "reselected Babashka exited before its prompt"}
+    timeout {fail "reselected $label did not reach its prompt"}
+    eof {fail "reselected $label exited before its prompt"}
   }
   send -i $channel "\004"
   expect {
@@ -309,7 +316,7 @@ proc assert_jus_session_resume {} {
   if {$status != 130} {
     fail "resumed jus session exited $status instead of 130"
   }
-  puts "PASS jus session resume: REPL Ctrl-C stays native and Ctrl-D returns to the selected REPL picker"
+  puts "PASS jus $label session resume: Ctrl-C stays native and Ctrl-D returns to the selected REPL picker"
 }
 
 proc assert_jus_session_resume_after_ctrl_c {} {
@@ -346,7 +353,7 @@ proc assert_jus_session_resume_after_ctrl_c {} {
     -i $channel
     -re {Select REPL type} {}
     timeout {fail "Ctrl-C REPL exit did not return to the jus REPL picker"}
-    eof {fail "jus exited after the REPL handled Ctrl-C"}
+    eof {fail "jus exited after the REPL handled Ctrl-C (status [wait_status $channel])"}
   }
   send -i $channel "\r"
   expect {
@@ -620,6 +627,17 @@ foreach executable {bb clojure node ps} {
   }
 }
 
+if {$argv eq "session-ctrl-c"} {
+  assert_jus_session_resume_after_ctrl_c
+  file delete -force $temp_root
+  exit 0
+}
+if {$argv eq "session-rebel"} {
+  assert_jus_session_resume rebel 1
+  file delete -force $temp_root
+  exit 0
+}
+
 prepare_dependencies
 assert_pre_readiness_cleanup
 
@@ -637,7 +655,8 @@ puts "PASS $runtime_label(clojurescript): spinner cleared before one version and
 assert_managed_cljs_cache $before_cljs_tree
 puts "PASS ClojureScript cache: all compiler output stayed under XDG_CACHE_HOME/jus/cljs-repl/1.12.145/<cwd-sha256>"
 puts "PASS terminal handoff: no alternate-screen residue, launch cursor controls, waiting Babashka Rebel parent, or Rebel thread loop"
-assert_jus_session_resume
+assert_jus_session_resume babashka 3
+assert_jus_session_resume rebel 1
 assert_jus_session_resume_after_ctrl_c
 puts "PASS all four runtimes"
 

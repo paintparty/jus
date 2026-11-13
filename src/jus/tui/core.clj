@@ -15,7 +15,8 @@
             [jus.tui.repls :as repls]
             [jus.tui.style :as style :refer [error-prefix]])
   (:import (java.lang ProcessBuilder$Redirect)
-           (java.nio.file Files LinkOption)))
+           (java.nio.file Files LinkOption)
+           (org.jline.utils Signals)))
 
 (def project-created-at "  ✓ Project created at ")
 
@@ -2415,10 +2416,17 @@
 
 (defn- run-child-process!
   [command]
-  (-> (ProcessBuilder. ^java.util.List command)
-      (.inheritIO)
-      (.start)
-      (.waitFor)))
+  ;; Terminal SIGINT reaches both Jus and the child. Keep the supervisor alive
+  ;; while the REPL handles it. Use a caught handler rather than SIG_IGN, which
+  ;; an exec'd child would inherit and could no longer handle normally.
+  (let [previous-int (Signals/register "INT" (reify Runnable (run [_])))]
+    (try
+      (-> (ProcessBuilder. ^java.util.List command)
+          (.inheritIO)
+          (.start)
+          (.waitFor))
+      (finally
+        (Signals/unregister "INT" previous-int)))))
 
 (defn- repl-handoff-classpath []
   (let [resource (io/resource "jus/tui/core.clj")]

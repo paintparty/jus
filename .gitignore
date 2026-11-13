@@ -1,6 +1,7 @@
 .clj-kondo/.cache/
 .cpcache/
 .lsp/.cache/
+.jolt
 target/
 .nrepl-port
 *.class
