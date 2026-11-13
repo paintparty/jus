@@ -36,9 +36,6 @@
               {:label "APIs"
                :desc  "Official API Reference"
                :url   "https://clojure.org/api"}
-              {:label "APIs"
-               :desc  "Official API Reference"
-               :url   "https://clojure.org/api"}
               {:label "Cheat Sheet"
                :desc  "Official API Cheat Sheet"
                :url   "https://clojure.org/api/cheatsheet"}
@@ -417,6 +414,9 @@
     :entries [{:label "Books"
                :desc  "Official list of Clojure books"
                :url   "https://clojure.org/community/books"}
+              {:label "Rich Hickey Fan Club"
+               :desc  "Rich Hickey's talks, interviews, and writings"
+               :url   "https://github.com/tallesl/Rich-Hickey-fanclub"}
               {:label "Data Science Tools and Libraries"
                :desc  "From the Scicloj community"
                :url   "https://scicloj.github.io/docs/resources/libs/"}
