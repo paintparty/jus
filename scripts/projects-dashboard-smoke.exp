@@ -79,7 +79,7 @@ expect_text {Read the README}
 send -- "\r"
 expect_text {README line 1}
 send -- "\033\[6~"
-expect_text {README line 20}
+expect_text {README line 16}
 send -- "\033\[F"
 expect_text {README line 80}
 send -- "\033"

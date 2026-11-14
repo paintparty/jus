@@ -1,0 +1,22 @@
+{
+  "document": {"margin": 0},
+  "heading": {"bold": true, "block_suffix": "\n"},
+  "h1": {"bold": true, "inverse": true, "prefix": " ", "suffix": " "},
+  "h2": {"bold": true, "inverse": true, "prefix": " ", "suffix": " "},
+  "block_quote": {"indent": 1, "indent_token": "│ "},
+  "list": {"level_indent": 2},
+  "item": {"block_prefix": "• "},
+  "enumeration": {"block_prefix": ". "},
+  "task": {"ticked": "[✓] ", "unticked": "[ ] "},
+  "strong": {"bold": true},
+  "emph": {"italic": true},
+  "strikethrough": {"crossed_out": true},
+  "link": {"underline": true},
+  "link_text": {"bold": true},
+  "image_text": {"format": "{{\"\"}}"},
+  "image": {"format": "\n\ue000\n{{printf \"%x\" .text}}\n\ue001\n"},
+  "code": {},
+  "code_block": {"margin": 2},
+  "hr": {"format": "\n────────\n"},
+  "definition_description": {"block_prefix": "\n  "}
+}

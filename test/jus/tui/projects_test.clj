@@ -1,10 +1,12 @@
 (ns jus.tui.projects-test
   (:require [babashka.fs :as fs]
+            [charm.ansi.width :as ansi-width]
             [charm.message :as msg]
             [clojure.string :as str]
             [clojure.test :refer [deftest is]]
             [jus.tui.config :as config]
             [jus.tui.core :as core]
+            [jus.tui.markdown :as markdown]
             [jus.tui.projects :as projects])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileTime)))
@@ -28,6 +30,72 @@
   (if command
     (core/update-fn state ((:fn command)))
     [state nil]))
+
+(deftest readme-layout-is-cached-and-resize-results-cannot-overwrite-newer-layouts
+  (let [calls (atom [])
+        readme {:path "/tmp/README.md" :text "# Hello" :width 80
+                :lines (vec (map #(str "line " %) (range 80)))}
+        state (assoc (core/main-menu-state {}) :step :project-readme :readme readme)]
+    (with-redefs [markdown/render-readme
+                  (fn [source width]
+                    (swap! calls conj width)
+                    (assoc source :width width :lines [(str "width " width)]))]
+      (core/view state)
+      (event state :page-down)
+      (is (empty? @calls))
+      (let [[narrow narrow-command] (core/update-fn state {:type :window-size :width 50 :height 24})
+            [wide wide-command] (core/update-fn narrow {:type :window-size :width 90 :height 24})
+            [rendered _] (complete [wide wide-command])
+            [stale _] (core/update-fn rendered ((:fn narrow-command)))
+            [back _] (event wide :escape)
+            [late _] (core/update-fn back ((:fn wide-command)))]
+        (is (= 90 (get-in rendered [:readme :width])))
+        (is (= rendered stale))
+        (is (= back late))
+        (is (= :project-tasks (:step late)))))))
+
+(deftest glow-renders-markdown-and-image-placeholders-at-pane-width
+  (when (fs/which "glow")
+    (let [source (str "# Preview\n\n## Second\n\n### Third\n\n`inline-code`\n\n"
+                      "**Bold** and *emphasis*.\n\n"
+                      "- [x] Finished\n\n"
+                      "| Name | Description |\n| --- | --- |\n"
+                      "| Demo | A table cell with enough words to wrap |\n\n"
+                      "```html\n<img src='code-example'>\n```\n\n"
+                      "![alt](assets/image.png#dark)\n\n![][reference]\n\n[reference]: assets/other.png\n\n"
+                      "<div><img src='https://example.com/assets/html-image.svg?width=100'></div>\n\n"
+                      "![unicode](assets/%E7%8C%AB%20photo.png)\n\n"
+                      "<!-- hidden comment -->\n")]
+      (doseq [width [40 80]]
+        (let [rendered (markdown/render-readme {:path "/tmp/README.md" :text source} width)
+              output (str/join "\n" (:lines rendered))
+              plain (ansi-width/strip-ansi output)]
+          (is (nil? (:notice rendered)))
+          (is (str/includes? plain "Preview"))
+          (is (not (str/includes? plain "# Preview")))
+          (is (str/includes? plain "[✓] Finished"))
+          (is (str/includes? plain "Name"))
+          (is (str/includes? plain "<img src='code-example'>"))
+          (doseq [name ["image.png" "other.png" "html-image.svg" "猫 photo.png"]]
+            (is (str/includes? plain (str "│ image: " name "  │"))))
+          (is (not (str/includes? plain "assets/")))
+          (is (not (str/includes? plain "width=100")))
+          (is (str/includes? output "\033[1;7m \033[0m\033[1;7mPreview\033[0m\033[1;7m \033[0m"))
+          (is (str/includes? output "\033[1;7m \033[0m\033[1;7mSecond\033[0m\033[1;7m \033[0m"))
+          (is (str/includes? output "\033[1mThird\033[0m"))
+          (is (some #(str/starts-with? % "inline-code") (:lines rendered)))
+          (let [box-start (.indexOf ^java.util.List (:lines rendered)
+                                    "\033[2m┌───────────────────┐\033[0m")
+                box (subvec (:lines rendered) box-start (+ box-start 3))]
+            (is (every? #(and (str/starts-with? % "\033[2m")
+                              (str/ends-with? % "\033[0m")) box))
+            (is (= "│ image: image.png  │" (ansi-width/strip-ansi (second box))))
+            (is (str/blank? (ansi-width/strip-ansi (nth (:lines rendered) (dec box-start)))))
+            (is (not (str/blank? (ansi-width/strip-ansi (nth (:lines rendered) (- box-start 2))))))
+            (is (str/blank? (ansi-width/strip-ansi (nth (:lines rendered) (+ box-start 3)))))
+            (is (not (str/blank? (ansi-width/strip-ansi (nth (:lines rendered) (+ box-start 4)))))))
+          (is (not (str/includes? plain "hidden comment")))
+          (is (every? #(<= (ansi-width/string-width %) (- width 9)) (:lines rendered))))))))
 
 (deftest recent-projects-are-bounded-and-the-rest-sort-alphabetically
   (let [now 2000000000

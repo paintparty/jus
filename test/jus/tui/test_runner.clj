@@ -7,6 +7,8 @@
                  'jus.tui.repls-test
                  'jus.tui.repl-flow-test
                  'jus.tui.style-test
+                 'jus.tui.content-test
+                 'jus.tui.markdown-test
                  'repl-handoff.launch-test]
    :integration ['jus.tui.projects-test
                  'jus.tui.config-test

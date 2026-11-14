@@ -166,6 +166,9 @@ the dashboard is open. The first recent project is selected initially; if no
 projects are configured, **Add a new project** is selected.
 
 **Read the README** opens an existing top-level README, preferring Markdown.
+Markdown is rendered with [Glow](https://github.com/charmbracelet/glow) when it
+is installed on your `PATH` (`brew install glow` on macOS). Images appear as
+dim, padded boxes labeled with their filenames. Without Glow, the viewer falls back to text.
 Use arrows to scroll, Space/PgDn/PgUp to page, Home/End to jump, and Escape to
 return. The README wizard, test wizard, review wizard, and reorientation tasks
 are outside this first version.

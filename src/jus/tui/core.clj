@@ -12,6 +12,7 @@
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
             [jus.tui.menu :as menu]
+            [jus.tui.markdown :as markdown]
             [jus.tui.projects :as projects]
             [jus.tui.repls :as repls]
             [jus.tui.style :as style :refer [error-prefix]])
@@ -864,9 +865,26 @@
                                            (dashboard-default-idx (:catalog state)))
          :error nil :dashboard-busy? false))
 
+(declare render-menu-overflow-row)
+
 (defn- readme-page [state]
-  (content/page (get-in state [:readme :text] "") (:term-width state)
-                (max 1 (- (:term-height state) 14)) (or (:readme-offset state) 0)))
+  (content/page-lines (get-in state [:readme :lines] [""]) (:term-width state)
+                      (max 1 (- (:term-height state)
+                                (if (or (:readme-rendering? state)
+                                        (get-in state [:readme :notice])) 17 16)))
+                      (or (:readme-offset state) 0)
+                      {:padding-start 4 :dividers? true
+                       :render-overflow #(render-menu-overflow-row
+                                           (- (:term-width state) 4) %1 %2
+                                           (if (= 1 %2) "line" "lines"))}))
+
+(defn- render-readme-command [state]
+  (let [request (random-uuid)]
+    [(assoc state :readme-request request :readme-rendering? true)
+     (program/cmd
+      (fn []
+        {:type :readme-rendered :request request
+         :readme (markdown/render-readme (:readme state) (:term-width state))}))]))
 
 (defn- update-dashboard [state message]
   (let [step (:step state)
@@ -897,9 +915,18 @@
 
       (= :readme-loaded (:type message))
       (if (= (:request message) (:dashboard-request state))
-        [(cond-> (assoc state :dashboard-busy? false :error (:error message))
-           (:readme message) (assoc :step :project-readme :readme (:readme message)
-                                    :readme-offset 0)) nil]
+        (let [loaded (cond-> (assoc state :dashboard-busy? false :error (:error message))
+                       (:readme message) (assoc :step :project-readme :readme (:readme message)
+                                                :readme-offset 0))]
+          (if (and (:readme message)
+                   (not= (:term-width state) (get-in message [:readme :width])))
+            (render-readme-command loaded)
+            [loaded nil]))
+        [state nil])
+
+      (= :readme-rendered (:type message))
+      (if (and (= step :project-readme) (= (:request message) (:readme-request state)))
+        [(assoc state :readme (:readme message) :readme-rendering? false) nil]
         [state nil])
 
       (:dashboard-busy? state) [state nil]
@@ -917,7 +944,8 @@
                                             (or (:project-favorite-idx state) 0)
                                             (dec (count (location-choice-items (:global-config state)))))
                                 :error nil)
-         :project-readme (assoc state :step :project-tasks :menu-idx 0 :error nil)
+         :project-readme (assoc state :step :project-tasks :menu-idx 0 :error nil
+                                :readme-request nil :readme-rendering? false)
          (dashboard-back state)) nil]
 
       (= step :projects)
@@ -1011,7 +1039,9 @@
             (fn []
               (try
                 {:type :readme-loaded :request request
-                 :readme (projects/readme (get-in state [:selected-project :path]))}
+                 :readme (markdown/render-readme
+                          (projects/readme (get-in state [:selected-project :path]))
+                          (:term-width state))}
                 (catch Exception error
                   {:type :readme-loaded :request request :error (.getMessage error)}))))])
         [state nil])
@@ -1039,7 +1069,11 @@
   (cond
     ;; Keep viewport dimensions current during every background phase.
     (msg/window-size? msg)
-    [(animation/resize-state state msg) nil]
+    (let [resized (animation/resize-state state msg)]
+      (if (and (= :project-readme (:step state))
+               (not= (:term-width state) (:term-width resized)))
+        (render-readme-command resized)
+        [resized nil]))
 
     (dashboard-steps (:step state))
     (update-dashboard state msg)
@@ -1759,12 +1793,13 @@
     :else         (str x)))
 
 (defn- render-menu-overflow-row
-  [inner-w arrow hidden]
-  (let [content (str "  " arrow " " hidden " more")]
+  ([inner-w arrow hidden] (render-menu-overflow-row inner-w arrow hidden nil))
+  ([inner-w arrow hidden unit]
+  (let [content (str "  " arrow " " hidden " more" (when unit (str " " unit)))]
     (str " " (style/sgr "2" "│")
          (style/secondary content)
          (apply str (repeat (max 0 (- inner-w (count content))) " "))
-         (style/sgr "2" "│"))))
+         (style/sgr "2" "│")))))
 
 (defn- menu-row-capacity
   ([state] (menu-row-capacity state 0))
@@ -2410,6 +2445,11 @@
          (when (:dashboard-busy? state)
            (str "\n  " (if (= step :project-tasks) "Reading README..." "Adding project...")))
          (when-let [error (:error state)] (str "\n  " (style/error error)))
+         (when (and page (or (:readme-rendering? state) (get-in state [:readme :notice])))
+           (str "\n  " (style/secondary
+                           (if (:readme-rendering? state)
+                             "Reflowing README..."
+                             (or (get-in state [:readme :notice]) "")))))
          "\n  "
          (if page
            (str "↑↓: scroll, Space/PgDn/PgUp: page, Esc: back  "
