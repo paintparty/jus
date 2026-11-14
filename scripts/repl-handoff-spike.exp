@@ -9,6 +9,7 @@ if {[info exists env(SPIKE_VERBOSE)]} {
 set script_path [file normalize [info script]]
 set repo_root [file dirname [file dirname $script_path]]
 set scripts_dir [file join $repo_root scripts]
+set launcher_classpath "$scripts_dir:[file join $repo_root src]"
 set temp_root [exec mktemp -d /tmp/jus-repl-handoff.XXXXXX]
 set work_dir [file join $temp_root work]
 set cache_dir [file join $temp_root cache]
@@ -16,9 +17,9 @@ file mkdir $work_dir $cache_dir
 
 set failure_pattern {Failed to start.*thread|OutOfMemoryError|unable to create native thread|Exception in thread}
 
-set logo [string trim [exec bb -cp $scripts_dir -e {
-  (require '[repl-handoff.launch :as launch])
-  (print (launch/logo (System/getProperty "os.name")))
+set logo [string trim [exec bb -cp $launcher_classpath -e {
+  (require '[jus.tui.logo :as logo])
+  (print logo/glyph)
 }]]
 
 array set runtime_label {
@@ -178,7 +179,7 @@ proc spawn_for_cleanup_check {name path_entries handoff_delay_ms} {
   spawn -noecho sh -c {stty rows 40 columns 120; cd "$1"; shift; exec "$@"} \
     sh $work_dir env "PATH=$path_entries" "XDG_CACHE_HOME=$cache_dir" \
     "JUS_SPIKE_READINESS_DELAY_MS=$handoff_delay_ms" \
-    $bb_path -cp $scripts_dir -m repl-handoff.launch clojure
+    $bb_path -cp $::launcher_classpath -m repl-handoff.launch clojure
   return [list $transcript_path $spawn_id]
 }
 
@@ -251,7 +252,7 @@ proc assert_jus_session_resume {runtime down_count} {
     timeout {fail "jus did not reach its main menu"}
     eof {fail "jus exited before its main menu"}
   }
-  send -i $channel "\033\[B\r"
+  send -i $channel "\033\[B\033\[B\r"
   expect {
     -i $channel
     -re {Select REPL type} {}
@@ -334,7 +335,7 @@ proc assert_jus_session_resume_after_ctrl_c {} {
     timeout {fail "jus did not reach its main menu for the Ctrl-C resume check"}
     eof {fail "jus exited before the Ctrl-C resume check"}
   }
-  send -i $channel "\033\[B\r"
+  send -i $channel "\033\[B\033\[B\r"
   expect {
     -i $channel
     -re {Select REPL type} {}
@@ -409,7 +410,7 @@ proc start_runtime {runtime purpose} {
   spawn -noecho sh -c {stty rows 40 columns 120; cd "$1"; shift; exec "$@"} \
     sh $work_dir env "XDG_CACHE_HOME=$cache_dir" \
     "JUS_REPL_LINE_DELAY_MS=100" \
-    bb -cp $scripts_dir -m repl-handoff.launch $runtime
+    bb -cp $::launcher_classpath -m repl-handoff.launch $runtime
   set target_pid [exp_pid]
 
   expect {

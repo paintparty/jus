@@ -1,0 +1,101 @@
+#!/usr/bin/env expect
+# Exercise config confirmation, the shared browser, and README paging in a PTY.
+set timeout 30
+log_user [expr {[info exists env(JUS_PTY_VERBOSE)] ? 1 : 0}]
+set root [exec mktemp -d /tmp/jus-project-dashboard.XXXXXX]
+set home [file join $root home]
+set project [file join $home demo-project]
+set config_home [file join $root config]
+set config_path [file join $config_home jus config.edn]
+file mkdir $project [file dirname $config_path]
+log_file -a [file join $root terminal.log]
+set channel [open $config_path w]
+puts $channel [format {; preserve my settings
+{:tui {:projects {:parent-dirs ["%s" "/unused-favorite"]}}}} $home]
+close $channel
+set channel [open [file join $project README.md] w]
+for {set line 1} {$line <= 80} {incr line} {
+  puts $channel "README line $line"
+}
+close $channel
+
+proc expect_text {text} {
+  expect {
+    -exact $text {}
+    timeout {error "Timed out waiting for '$text' (artifacts: $::root)"}
+    eof {error "Unexpected exit waiting for '$text' (artifacts: $::root)"}
+  }
+}
+
+set driver {
+  (require '[jus.tui.core :as core])
+  (System/setProperty "user.home" (System/getenv "JUS_TEST_HOME"))
+  (System/exit (core/run-cli!))
+}
+spawn -noecho env "XDG_CONFIG_HOME=$config_home" "JUS_TEST_HOME=$home" bb -e $driver
+stty rows 24 columns 90 < $spawn_out(slave,name)
+expect_text {New Project Wizard}
+send -- "\033\[B\r"
+expect_text {Select Project}
+expect_text {Add a new project}
+send -- "\r"
+expect_text {Choose from my favorites...}
+expect_text {Browse file tree...}
+send -- "\r"
+expect_text {Choose a favorite directory to browse}
+send -- "\r"
+expect_text {Navigate and select an existing project directory}
+expect_text "$root/"
+expect_text {home}
+send -- "\033"
+expect_text {Choose a favorite directory to browse}
+send -- "\033"
+expect_text {Choose from my favorites...}
+send -- "\033\[B\r"
+expect_text {Navigate and select an existing project directory}
+expect_text "$root/"
+expect_text {home}
+# Parent is row 1; demo-project is row 2.
+send -- "\033\[B\033\[B\r"
+expect_text "$home/"
+expect_text {demo-project}
+send -- "\r"
+expect_text {Confirm adding this project}
+expect_text {[:tui :projects :paths]}
+send -- "\033"
+expect_text {Navigate and select an existing project directory}
+set channel [open $config_path r]
+set original [read $channel]
+close $channel
+if {[string first {:paths} $original] >= 0} {error "Cancelling confirmation wrote config"}
+send -- "\r"
+expect_text {Confirm adding this project}
+send -- "\r"
+expect_text {Select Project}
+expect_text {demo-project}
+send -- "\r"
+expect_text {Select a task}
+expect_text {Read the README}
+send -- "\r"
+expect_text {README line 1}
+send -- "\033\[6~"
+expect_text {README line 20}
+send -- "\033\[F"
+expect_text {README line 80}
+send -- "\033"
+expect_text {Select a task}
+send -- "\033"
+expect_text {Select Project}
+send -- "\003"
+expect eof
+set result [wait]
+if {[lindex $result 3] != 130} {error "Dashboard quit returned $result"}
+set channel [open $config_path r]
+set saved [read $channel]
+close $channel
+foreach expected {{preserve my settings} {/unused-favorite} {demo-project}} {
+  if {[string first $expected $saved] < 0} {error "Config lost '$expected'"}
+}
+log_file
+file delete -force $root
+puts {PASS projects dashboard: favorites or home browser, confirm/cancel config, preserve settings, read/page README, return to project menu}

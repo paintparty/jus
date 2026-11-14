@@ -70,6 +70,7 @@ switch -- $mode {
     spawn_fixed bb jus
     after 3000
     send "\033\[B"
+    send "\033\[B"
     after 300
     send "\r"
   }

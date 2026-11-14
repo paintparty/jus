@@ -1,6 +1,7 @@
 (ns repl-handoff.launch
   (:require [clojure.java.io :as io]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [jus.tui.logo :as logo])
   (:import (java.lang ProcessHandle)
            (java.math BigInteger)
            (java.nio.charset StandardCharsets)
@@ -60,12 +61,6 @@
 
 (def runtime-banner-outputs
   {:babashka :system-error})
-
-(defn logo
-  [os-name]
-  (if (str/starts-with? (str/lower-case (or os-name "")) "windows")
-    "*"
-    "◒"))
 
 (defn- sha-256
   [value]
@@ -212,7 +207,7 @@
                                     "jus-repl-handoff-"
                                     (make-array java.nio.file.attribute.FileAttribute 0)))
         state-path        (.getCanonicalPath state-dir)
-        logo-character    (logo (System/getProperty "os.name"))
+        logo-character    logo/glyph
         spinner-pid       (start-spinner! state-path label target-pid logo-character)
         environment       (merge (executable-environment executable)
                                  {"JUS_SPINNER_CONTROL" spinner-control

@@ -1,6 +1,6 @@
 (ns jus.tui.style
   (:require [charm.style.core :as charm-style]
-            [babashka.process :refer [shell]]
+            [jus.tui.logo :as logo]
             [clojure.string :as str]))
 
 (def no-color? true)
@@ -13,18 +13,7 @@
 (defn target-os? [s]
   (str/starts-with? (str/lower-case (System/getProperty "os.name" "")) s))
 (def windows? (target-os? "windows"))
-(def windows-10?
-  (delay
-    (try
-      (and windows?
-           (let [build (-> (shell {:out :string} "cmd" "/c" "ver")
-                           :out
-                           (->> (re-find #"\[Version \d+\.\d+\.(\d+)"))
-                           second
-                           parse-long)]
-             (< build 22000)))
-      (catch Exception _
-        false))))
+(def windows-10? logo/windows-10?)
 (def linux? (target-os? "linux"))
 (def mac? (target-os? "mac"))
 (def intel-mac?
@@ -35,7 +24,7 @@
 
 ;; Logo
 
-(def logo (cond @windows-10? "*" mac? "☯" :else "◒"))
+(def logo logo/glyph)
 
 ;; Formatting
 (def margin-inline-start 2)

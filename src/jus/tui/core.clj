@@ -12,6 +12,7 @@
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
             [jus.tui.menu :as menu]
+            [jus.tui.projects :as projects]
             [jus.tui.repls :as repls]
             [jus.tui.style :as style :refer [error-prefix]])
   (:import (java.lang ProcessBuilder$Redirect)
@@ -102,6 +103,7 @@
    :wizard           (let [l "New Project Wizard"]
                        {:label     l
                         :nav-label "Project Wizard"})
+   :projects         {:label "Command Central" :nav-label "Command Central"}
    :repl             (let [l "Launch Interactive REPL"]
                        {:label     l
                         :nav-label l})
@@ -116,7 +118,7 @@
   (vec (concat
         (when dev-success-sequence? [:success-sequence])
         (when dev-opening-sequence? [:opening-sequence])
-        [:wizard :repl :resources :about])))
+        [:wizard :projects :repl :resources :about])))
 
 (defn main-menu-items []
   (mapv #(get-in main-menu-items* [% :label]) (main-menu-choices)))
@@ -506,6 +508,12 @@
   "Initial selection is always the top section (index 0)."
   [_path] 0)
 
+(defn- location-choice-items [global-config]
+  (vec (concat
+        (when (seq (config/parent-dirs global-config))
+          [{:label "Choose from my favorites..." :type :list}])
+        [{:label "Browse file tree..." :type :browse}])))
+
 (defn config-creation-cmd
   "Async cmd that creates the offered Global config without blocking the TUI."
   [path config-data]
@@ -816,6 +824,215 @@
            (dissoc :repl-install-copy-mode :error)) nil]
       :else [state nil])))
 
+(defn- dashboard-items [state]
+  (vec (concat [{:label "Add a new project" :section :add}]
+               (map #(assoc % :section :recent) (get-in state [:catalog :recent]))
+               (map #(assoc % :section :other) (get-in state [:catalog :other])))))
+
+(defn- dashboard-default-idx [catalog]
+  (if (or (seq (:recent catalog)) (seq (:other catalog))) 1 0))
+
+(def ^:private dashboard-steps
+  #{:projects :project-location-choice :project-favorites :project-browse
+    :project-add-confirm :project-tasks :project-readme})
+
+(defn- browse-existing-project [state directory mode]
+  (let [path (projects/canonical-path directory)]
+    (when-not (fs/directory? path)
+      (throw (ex-info "Favorite directory is unavailable. Update :parent-dirs in config.edn." {})))
+    (assoc state :step :project-browse :nav-path path :browse-existing? true
+           :project-location-mode mode
+           :nav-items (build-browse-items path) :nav-idx 0 :error nil)))
+
+(defn- dashboard-load [state]
+  (let [request (random-uuid)]
+    [(assoc state :step :projects :menu-idx 0 :error nil
+            :dashboard-request request :dashboard-loading? true)
+     (program/cmd
+      (fn []
+        (try
+          (let [{:keys [config error]} (config/load-config-result (config/global-config-path))]
+            (when error (throw error))
+            {:type :dashboard-loaded :request request :config config
+             :catalog (projects/catalog (config/project-paths config)
+                                        (System/currentTimeMillis))})
+          (catch Exception error
+            {:type :dashboard-loaded :request request :error (.getMessage error)}))))]))
+
+(defn- dashboard-back [state]
+  (assoc state :step :projects :menu-idx (or (:project-menu-idx state)
+                                           (dashboard-default-idx (:catalog state)))
+         :error nil :dashboard-busy? false))
+
+(defn- readme-page [state]
+  (content/page (get-in state [:readme :text] "") (:term-width state)
+                (max 1 (- (:term-height state) 14)) (or (:readme-offset state) 0)))
+
+(defn- update-dashboard [state message]
+  (let [step (:step state)
+        enter? (msg/key-match? message "enter")
+        up? (msg/key-match? message :up)
+        down? (msg/key-match? message :down)
+        escape? (msg/key-match? message :escape)]
+    (cond
+      (msg/key-match? message "ctrl+c")
+      [(assoc state :done? true :exit-code 130) program/quit-cmd]
+
+      (= :dashboard-loaded (:type message))
+      (if (= (:request message) (:dashboard-request state))
+        [(cond-> (assoc state :dashboard-loading? false :error (:error message))
+           (not (:error message)) (assoc :catalog (:catalog message)
+                                          :global-config (:config message))
+           (and (not (:error message)) (= :projects step))
+           (assoc :menu-idx (dashboard-default-idx (:catalog message)))) nil]
+        [state nil])
+
+      (= :project-added (:type message))
+      (if (= (:request message) (:dashboard-request state))
+        (if-let [error (:error message)]
+          [(assoc state :dashboard-busy? false :error error) nil]
+          (dashboard-load (assoc state :global-config (:config message)
+                                 :global-config-exists? true :dashboard-busy? false)))
+        [state nil])
+
+      (= :readme-loaded (:type message))
+      (if (= (:request message) (:dashboard-request state))
+        [(cond-> (assoc state :dashboard-busy? false :error (:error message))
+           (:readme message) (assoc :step :project-readme :readme (:readme message)
+                                    :readme-offset 0)) nil]
+        [state nil])
+
+      (:dashboard-busy? state) [state nil]
+
+      escape?
+      [(case step
+         :projects (assoc state :step :main-menu
+                          :menu-idx (.indexOf (main-menu-choices) :projects) :error nil)
+         :project-add-confirm (assoc state :step :project-browse :nav-idx 0 :error nil)
+         :project-favorites (assoc state :step :project-location-choice :menu-idx 0 :error nil)
+         :project-browse (assoc state
+                                :step (if (= :list (:project-location-mode state))
+                                        :project-favorites :project-location-choice)
+                                :menu-idx (if (= :list (:project-location-mode state))
+                                            (or (:project-favorite-idx state) 0)
+                                            (dec (count (location-choice-items (:global-config state)))))
+                                :error nil)
+         :project-readme (assoc state :step :project-tasks :menu-idx 0 :error nil)
+         (dashboard-back state)) nil]
+
+      (= step :projects)
+      (let [items (dashboard-items state)
+            selected (nth items (:menu-idx state) nil)]
+        (cond
+          enter?
+          (if (= :add (:section selected))
+            [(assoc state :step :project-location-choice :menu-idx 0
+                    :project-menu-idx (:menu-idx state) :error nil) nil]
+            (if (and selected (not (:missing? selected)))
+              [(assoc state :step :project-tasks :selected-project selected
+                      :project-menu-idx (:menu-idx state) :menu-idx 0 :error nil) nil]
+              [(assoc state :error "Project directory is unavailable. Update its path in config.edn.") nil]))
+          up? [(update state :menu-idx #(max 0 (dec %))) nil]
+          down? [(update state :menu-idx #(min (dec (count items)) (inc %))) nil]
+          (msg/key-match? message "r")
+          (dashboard-load state)
+          :else [state nil]))
+
+      (= step :project-location-choice)
+      (let [items (location-choice-items (:global-config state))]
+        (cond
+          enter?
+          (if (= :list (:type (nth items (:menu-idx state))))
+            [(assoc state :step :project-favorites :menu-idx 0 :error nil) nil]
+            (try
+              [(browse-existing-project state (str (fs/expand-home "~")) :browse) nil]
+              (catch Exception error [(assoc state :error (.getMessage error)) nil])))
+          up? [(assoc state :menu-idx 0 :error nil) nil]
+          down? [(assoc state :menu-idx (dec (count items)) :error nil) nil]
+          :else [state nil]))
+
+      (= step :project-favorites)
+      (let [favorites (config/parent-dirs (:global-config state))]
+        (cond
+          enter?
+          (if-let [directory (nth favorites (:menu-idx state) nil)]
+            (try
+              [(browse-existing-project
+                (assoc state :project-favorite-idx (:menu-idx state)) directory :list) nil]
+              (catch Exception error [(assoc state :error (.getMessage error)) nil]))
+            [state nil])
+          up? [(update state :menu-idx #(max 0 (dec %))) nil]
+          down? [(update state :menu-idx #(min (max 0 (dec (count favorites))) (inc %))) nil]
+          :else [state nil]))
+
+      (= step :project-browse)
+      (cond
+        enter?
+        (if (zero? (:nav-idx state))
+          (try
+            (let [path (projects/canonical-path (:nav-path state))
+                  config-path (str (config/global-config-path))
+                  source (config/update-source config-path)]
+              [(assoc state :step :project-add-confirm :pending-project path
+                      :project-config-path config-path :project-config-source source
+                      :menu-idx 0 :error nil) nil])
+            (catch Exception error [(assoc state :error (.getMessage error)) nil]))
+          (let [path (:path (nth (:nav-items state) (dec (:nav-idx state))))]
+            [(assoc state :nav-path path :nav-items (build-browse-items path)
+                    :nav-idx 0 :error nil) nil]))
+        up? [(update state :nav-idx #(max 0 (dec %))) nil]
+        down? [(update state :nav-idx #(min (count (:nav-items state)) (inc %))) nil]
+        :else [state nil])
+
+      (= step :project-add-confirm)
+      (cond
+        (or up? down?) [(update state :menu-idx #(if (zero? %) 1 0)) nil]
+        enter?
+        (if (= 1 (:menu-idx state))
+          [(assoc state :step :project-browse :nav-idx 0 :error nil) nil]
+          (let [request (random-uuid)]
+            [(assoc state :dashboard-busy? true :dashboard-request request :error nil)
+             (program/cmd
+              (fn []
+                (try
+                  {:type :project-added :request request
+                   :config (config/add-project! (:project-config-path state)
+                                                 (:pending-project state)
+                                                 (:project-config-source state))}
+                  (catch Exception error
+                    {:type :project-added :request request :error (.getMessage error)}))))]))
+        :else [state nil])
+
+      (= step :project-tasks)
+      (if enter?
+        (let [request (random-uuid)]
+          [(assoc state :dashboard-busy? true :dashboard-request request :error nil)
+           (program/cmd
+            (fn []
+              (try
+                {:type :readme-loaded :request request
+                 :readme (projects/readme (get-in state [:selected-project :path]))}
+                (catch Exception error
+                  {:type :readme-loaded :request request :error (.getMessage error)}))))])
+        [state nil])
+
+      (= step :project-readme)
+      (let [{:keys [offset max-offset visible-lines]} (readme-page state)
+            next-offset (cond
+                          (or down? (msg/key-match? message "j")) (inc offset)
+                          (or up? (msg/key-match? message "k")) (dec offset)
+                          (or (msg/key-match? message :pgdown)
+                              (msg/key-match? message :page-down)
+                              (msg/key-match? message " ")) (+ offset visible-lines)
+                          (or (msg/key-match? message :pgup)
+                              (msg/key-match? message :page-up)) (- offset visible-lines)
+                          (msg/key-match? message :home) 0
+                          (msg/key-match? message :end) max-offset
+                          :else offset)]
+        [(assoc state :readme-offset (max 0 (min max-offset next-offset))) nil])
+
+      :else [state nil])))
+
 (defn update-fn
   "Charm.clj update. Dispatches on animation state, then wizard step."
   [state msg]
@@ -823,6 +1040,9 @@
     ;; Keep viewport dimensions current during every background phase.
     (msg/window-size? msg)
     [(animation/resize-state state msg) nil]
+
+    (dashboard-steps (:step state))
+    (update-dashboard state msg)
 
     (= :repl-install-menu (:step state))
     (update-repl-install state msg)
@@ -1019,6 +1239,8 @@
 
           :repl [(assoc state :step :repl-menu :menu-idx 0 :error nil
                         :repl-installed (repls/installed-ids)) nil]
+
+          :projects (dashboard-load state)
 
           :resources
           [(assoc state :step :resources
@@ -1244,11 +1466,7 @@
             :else [state nil])
 
           :project-path
-          (let [has-cfg? (seq (config/parent-dirs (:global-config state)))
-                items    (if has-cfg?
-                           [{:label "Choose from my favorites..." :type :list}
-                            {:label "Browse file tree..." :type :browse}]
-                           [{:label "Browse file tree..." :type :browse}])]
+          (let [items (location-choice-items (:global-config state))]
             (cond
               (msg/key-match? msg "enter")
               (let [selected    (nth items (:nav-idx state) nil)
@@ -1720,13 +1938,14 @@
         bot-bar      (str " " (style/secondary (str "╰" h-bar "╯")))
         side         (style/secondary "│")
         nav-path     (:nav-path state)
-        pn           (text-input/value (:project-name state))
+        pn           (when-not (:browse-existing? state)
+                       (text-input/value (:project-name state)))
         items        (or (:nav-items state) [])
         sel-idx      (:nav-idx state)
         top-sel?     (zero? sel-idx)
         capacity     (max 1 (- (or (:term-height state) 24) 16))
         ;; Top row: " > <nav-path>/<project>"  (or "   …" when not selected)
-        out-path     (str nav-path "/" pn)
+        out-path     (if (:browse-existing? state) nav-path (str nav-path "/" pn))
         prefix       (if top-sel? "  > " "    ")
         plain        (str prefix out-path)
         top-pad      (apply str (repeat (max 0 (- inner-w (count plain))) " "))
@@ -1916,7 +2135,7 @@
         header (if (<= (count (strip-ansi header)) width)
                  header
                  (str "\n" (style/italic
-                            (fit-repl-text (str "  ◒ jus ╱ " label) width))))
+                            (fit-repl-text (str "  " style/logo " jus ╱ " label) width))))
         helper-slot (fn [lines tone]
                       (str "  "
                            (helper-text (str/join "\n  " lines) tone)))
@@ -2093,6 +2312,112 @@
        (help-bar :about)
        "\n"))
 
+(defn- render-project-catalog [state]
+  (let [items (dashboard-items state)
+        inner-w (max 4 (- (:term-width state) 4))
+        border (fn [left right]
+                 (str " " (style/secondary
+                           (str left (apply str (repeat inner-w "─")) right))))
+        row (fn [text selected?]
+              (let [width (max 1 (- inner-w 8))
+                    text (if (> (count (strip-ansi text)) width)
+                           (truncate-with-ellipsis (strip-ansi text) width)
+                           text)
+                    padding (max 0 (- inner-w 4 (count (strip-ansi text))))]
+                (str " " (style/secondary "│")
+                     (if selected? (str "  " focused-item-arrow " ") "    ") text
+                     (apply str (repeat padding " ")) (style/secondary "│"))))
+        window (menu/render-window
+                items (:menu-idx state) (max 1 (- (:term-height state) 20))
+                (max 1 (- (:term-height state) 16))
+                (fn [index item]
+                  (let [section (:section item)
+                        first? (or (zero? index)
+                                   (not= section (:section (nth items (dec index)))))
+                        selected? (= index (:menu-idx state))
+                        label (str (:label item) (when (:missing? item) " (unavailable)"))
+                        line (row (if selected? (style/selected label) label) selected?)]
+                    (vec (concat
+                          (when (and first? (pos? index) (>= (:term-height state) 20))
+                            (if (= :add (:section (nth items (dec index))))
+                              [(row "" false)]
+                              [(row "" false)
+                               (row (style/secondary (apply str (repeat (max 0 (- inner-w 8)) "─"))) false)
+                               (row "" false)]))
+                          [line]))))
+                (partial render-menu-overflow-row inner-w))]
+    (str/join "\n" (concat [(border "╭" "╮")]
+                             (menu-window-rows window inner-w)
+                             [(border "╰" "╯")]))))
+
+(defn- render-project-confirmation [state]
+  (let [field (fn [[label value]]
+                (let [chunks (map #(apply str %) (partition-all (max 1 (- (:term-width state) 14)) value))]
+                  (cons (str "  " (format "%-12s" label) (first chunks))
+                        (map #(str (apply str (repeat 14 " ")) %) (rest chunks)))))]
+    (str (str/join "\n"
+                   (mapcat field [["Project:" (:pending-project state)]
+                                  ["Config:" (:project-config-path state)]
+                                  ["Append to:" "[:tui :projects :paths]"]]))
+         "\n" (render-list ["Yes, add project" "Choose a different directory"]
+                             (:menu-idx state) (:term-width state) 2))))
+
+(defn- render-dashboard [state]
+  (let [step (:step state)
+        selected (:selected-project state)
+        page (when (= step :project-readme) (readme-page state))]
+    (str (main-menu-logo-prefix) main-menu-logo-with-nav
+         (style/italic "Command Central")
+         "\n\n\n  "
+         (case step
+           :projects "Select Project"
+           :project-location-choice "Select location for existing project"
+           :project-favorites "Choose a favorite directory to browse"
+           :project-browse "Navigate and select an existing project directory"
+           :project-add-confirm "Confirm adding this project"
+           :project-tasks (str (:label selected) " — Select a task")
+           :project-readme (display-user-path (get-in state [:readme :path])))
+         "\n"
+         (case step
+           :projects (render-project-catalog state)
+           :project-location-choice
+           (render-list (location-choice-items (:global-config state))
+                        (:menu-idx state) (:term-width state) (menu-row-capacity state))
+           :project-favorites
+           (render-parent-dirs (config/parent-dirs (:global-config state))
+                               (:menu-idx state) (:term-width state) (menu-row-capacity state))
+           :project-browse (render-browse state)
+           :project-add-confirm
+           (render-project-confirmation state)
+           :project-tasks
+           (render-resource-list [{:label "Read the README" :desc "Page the existing README"}]
+                                 0 (:term-width state) 1)
+           :project-readme (:rendered page))
+         (when (= step :projects)
+           (str (when-let [path (:path (nth (dashboard-items state) (:menu-idx state) nil))]
+                  (str "\n  " (style/secondary
+                                  (truncate-with-ellipsis (display-user-path path)
+                                                          (max 1 (- (:term-width state) 4))))))
+                "\n  " (style/secondary
+                          (if (:dashboard-loading? state)
+                            "Refreshing projects list..."
+                            "R: refresh projects list"))
+                (when (some :activity-limited? (concat (get-in state [:catalog :recent])
+                                                       (get-in state [:catalog :other])))
+                  "\n  Activity scan incomplete for some projects; ordering may be approximate.")))
+         (when (= step :project-tasks)
+           (str "\n  " (style/secondary (display-user-path (:path selected)))))
+         (when (:dashboard-busy? state)
+           (str "\n  " (if (= step :project-tasks) "Reading README..." "Adding project...")))
+         (when-let [error (:error state)] (str "\n  " (style/error error)))
+         "\n  "
+         (if page
+           (str "↑↓: scroll, Space/PgDn/PgUp: page, Esc: back  "
+                (inc (:offset page)) "–" (+ (:offset page) (:visible-lines page))
+                "/" (:total-lines page))
+           "Enter: next, ↑↓: menus, Esc: back, Ctrl-C: quit")
+         "\n")))
+
 (declare view*)
 
 (defn view
@@ -2121,6 +2446,9 @@
 
     (= :about (:step state))
     (render-about-screen state)
+
+    (dashboard-steps (:step state))
+    (render-dashboard state)
 
     (and (menu-screen? (:step state))
          (not (:success-pause state))
@@ -2274,14 +2602,7 @@
              (render-summary state)
 
              :project-path
-             (let [has-cfg? (seq (config/parent-dirs (:global-config state)))
-                   items    (if has-cfg?
-                              [{:label "Choose from my favorites..."
-                                :type  :list}
-                               {:label "Browse file tree..."
-                                :type  :browse}]
-                              [{:label "Browse file tree..."
-                                :type  :browse}])
+             (let [items (location-choice-items (:global-config state))
                    sel      (:nav-idx state)]
                (render-list items sel (:term-width state)
                             (menu-row-capacity state)))
@@ -2432,15 +2753,12 @@
   (let [resource (io/resource "jus/tui/core.clj")]
     (when-not resource
       (throw (ex-info "Unable to locate jus source root" {})))
-    (-> resource
-        .toURI
-        io/file
-        .getParentFile
-        .getParentFile
-        .getParentFile
-        .getParentFile
-        (io/file "scripts")
-        .getCanonicalPath)))
+    (let [source-root (-> resource .toURI io/file
+                          .getParentFile .getParentFile .getParentFile)
+          scripts-root (io/file (.getParentFile source-root) "scripts")]
+      (str (.getCanonicalPath scripts-root)
+           java.io.File/pathSeparator
+           (.getCanonicalPath source-root)))))
 
 (defn- run-repl!
   ([] (run-repl! :rebel))

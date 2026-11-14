@@ -8,7 +8,8 @@
                  'jus.tui.repl-flow-test
                  'jus.tui.style-test
                  'repl-handoff.launch-test]
-   :integration ['jus.tui.config-test
+   :integration ['jus.tui.projects-test
+                 'jus.tui.config-test
                  'jus.tui.generator-test]})
 
 (defn- namespaces-for

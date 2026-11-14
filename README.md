@@ -136,6 +136,40 @@ For running tasks in projects that contain a `bb.edn`, check out [bbtl](https://
 
 <br>
 
+## Command Central
+
+Choose **Command Central** to browse existing projects and read their READMEs.
+Use **Add a new project**, then **Choose from my favorites...** to start browsing
+from a configured `:parent-dirs` directory, or **Browse file tree...** to start
+at home. Confirm the project directory and config destination before saving.
+You can also edit
+`~/.config/jus/config.edn` (or `$XDG_CONFIG_HOME/jus/config.edn`) directly:
+
+```clojure
+{:tui {:projects {:paths ["~/Developer/my-app"
+                         "/absolute/path/to/another-project"]}}}
+```
+
+Keep any existing `:groups`, `:developers`, and `:parent-dirs` in that same map.
+Only explicitly listed projects appear. Jus does not discover projects by
+scanning your home directory or the new-project wizard's favorite directories.
+
+The five most recently modified projects from the last 14 days appear first;
+the remaining projects sort alphabetically. Activity uses file modification
+times, including nested source files, rather than when you open a project in
+Jus. Common generated directories (`.git`, `target`, `node_modules`, caches,
+and build outputs) and symbolic links are skipped. Each scan is bounded to
+20,000 entries, 24 levels, and one second per project; incomplete scans are
+identified in the dashboard. Opening Command Central automatically reloads
+config and refreshes activity. Press **R** to refresh the projects list while
+the dashboard is open. The first recent project is selected initially; if no
+projects are configured, **Add a new project** is selected.
+
+**Read the README** opens an existing top-level README, preferring Markdown.
+Use arrows to scroll, Space/PgDn/PgUp to page, Home/End to jump, and Escape to
+return. The README wizard, test wizard, review wizard, and reorientation tasks
+are outside this first version.
+
 ## Roadmap 
 Based on usage patterns and subject to community feedback going forward, here is a short list of features being considered:
 
@@ -155,8 +189,6 @@ Based on usage patterns and subject to community feedback going forward, here is
 - A search UI for discovery of libs/functions à la [The Clojure Toolbox](https://www.clojure-toolbox.com/), [clojure.land](https://clojure.land/), or [Cloogle](https://cloogle.phronemophobic.com/doc-search.html)
 
 - Creation of a floating modal-panel to leverage for contextual menus and alerts (info, errors, warnings, and query results).
-
-- Lightweight "My Projects" directory/dashboard
 
 - Automated "recent news" aggregator feed for people who want to limit their exposure to the UI of Slack, Reddit, etc.
 

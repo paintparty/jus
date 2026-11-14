@@ -358,7 +358,7 @@
     (let [global-config example-global-config
           initial       (core/main-menu-state global-config)
           [project _]   (core/update-fn initial (msg/key-press :enter))
-          [resources _] (core/update-fn (assoc initial :menu-idx 2)
+          [resources _] (core/update-fn (assoc initial :menu-idx (.indexOf (core/main-menu-choices) :resources))
                                         (msg/key-press :enter))
           opened        (atom nil)
           [category _]
@@ -367,7 +367,7 @@
                                          true)]
             (let [[category _] (core/update-fn resources (msg/key-press :enter))]
               (core/update-fn category (msg/key-press :enter))))
-          [repl repl-cmd] (core/update-fn (assoc initial :menu-idx 1)
+          [repl repl-cmd] (core/update-fn (assoc initial :menu-idx (.indexOf (core/main-menu-choices) :repl))
                                           (msg/key-press :enter))
           rendered       (core/strip-ansi (core/view initial))]
       (is (= :project-template (:step project)))
@@ -1983,9 +1983,15 @@
       #(do
          (is (= 23 (#'core/run-repl!)))
          (is (= command @started))
-         (let [classpath (java.io.File. (nth @started 2))]
-           (is (.isAbsolute classpath))
-           (is (.isDirectory classpath)))))))
+         (let [entries (str/split (nth @started 2)
+                                  (re-pattern java.io.File/pathSeparator))
+               [scripts-root source-root] (mapv (fn [entry] (java.io.File. entry)) entries)]
+           (is (= 2 (count entries)))
+           (doseq [entry [scripts-root source-root]]
+             (is (.isAbsolute entry))
+             (is (.isDirectory entry)))
+           (is (.isFile (java.io.File. scripts-root "repl_handoff/launch.clj")))
+           (is (.isFile (java.io.File. source-root "jus/tui/logo.clj"))))))))
 
 (deftest repl-waits-for-a-child-process-on-the-jvm
   (with-redefs-fn {#'core/run-child-process! (constantly 23)}

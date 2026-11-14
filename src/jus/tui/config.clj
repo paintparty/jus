@@ -2,9 +2,11 @@
   (:require [babashka.fs :as fs]
             [cljfmt.core :as cljfmt]
             [clojure.edn :as edn]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [jus.tui.projects :as projects]
+            [rewrite-clj.zip :as z])
   (:import (java.nio.charset StandardCharsets)
-           (java.nio.file FileAlreadyExistsException Files LinkOption OpenOption
+           (java.nio.file FileAlreadyExistsException Files LinkOption OpenOption CopyOption StandardCopyOption
                           Path StandardOpenOption)
            (java.nio.file.attribute FileAttribute)))
 
@@ -96,7 +98,8 @@
 (defn normalize-config
   "Normalizes supported config layouts to the nested :tui/:projects shape."
   [config]
-  (let [groups (or (get-in config (conj projects-path :groups))
+  (let [config (or config {})
+        groups (or (get-in config (conj projects-path :groups))
                    (:groups config)
                    [])
         developers (or (get-in config (conj projects-path :developers))
@@ -104,12 +107,22 @@
                        [])
         parent-dirs (or (get-in config (conj projects-path :parent-dirs))
                         (:parent-dirs config)
-                        [])]
-    (if (and (empty? groups) (empty? developers) (empty? parent-dirs))
+                        [])
+        paths (get-in config (conj projects-path :paths))]
+    (when-not (map? config)
+      (throw (ex-info "Jus config must contain an EDN map." {})))
+    (when (and (some? paths)
+               (not (and (vector? paths) (every? string? paths))))
+      (throw (ex-info "[:tui :projects :paths] must be a vector of directory paths." {})))
+    (if (and (empty? config) (empty? groups) (empty? developers) (empty? parent-dirs) (empty? paths))
       {}
-      {:tui {:projects {:groups groups
-                        :developers developers
-                        :parent-dirs parent-dirs}}})))
+      (-> (apply dissoc config [:groups :developers :parent-dirs])
+          (assoc-in (conj projects-path :groups) groups)
+          (assoc-in (conj projects-path :developers) developers)
+          (assoc-in (conj projects-path :parent-dirs) parent-dirs)))))
+
+(defn project-paths [config]
+  (get-in (normalize-config config) (conj projects-path :paths) []))
 
 (defn groups
   "Returns configured project groups."
@@ -171,6 +184,9 @@
        "  :projects\n"
        "  {\n"
        (str/join "\n\n" (map #(format-field " " % config) config-fields))
+       (when (seq (project-paths config))
+         (str "\n\n  ;; Existing projects shown in Command Central.\n"
+              (format-vector " " ":paths         " (project-paths config))))
        "}}}\n"))
 
 (defn format-config-preview
@@ -216,3 +232,60 @@
         target
         (finally
           (Files/deleteIfExists temp-file))))))
+
+(defn update-source
+  "Capture the exact config shown at confirmation; malformed files are never overwritten."
+  [path]
+  (when (config-exists? path)
+    (let [source (slurp (str path))]
+      (normalize-config (edn/read-string source))
+      source)))
+
+(defn- assoc-in-source [loc [key & more] value]
+  (if (seq more)
+    (if-let [child (z/get loc key)]
+      (assoc-in-source child more value)
+      (z/assoc loc key (assoc-in {} more value)))
+    (z/assoc loc key value)))
+
+(defn add-project!
+  "Append a canonical project path, preserving comments and unrelated config.
+   Refuses to replace config changed since the confirmation screen."
+  [path project-path expected-source]
+  (let [canonical (projects/canonical-path project-path)
+        source (update-source path)]
+    (when-not (fs/directory? canonical)
+      (throw (ex-info "The selected project directory no longer exists." {})))
+    (when-not (= source expected-source)
+      (throw (ex-info "Config changed. Go back and confirm the project again." {})))
+    (let [data (if source (edn/read-string source) {})
+          existing (project-paths data)]
+      (if (some #{canonical} (map projects/canonical-path existing))
+        (normalize-config data)
+        (let [root (z/of-string (or source "{}"))
+              paths-loc (some-> root (z/get :tui) (z/get :projects) (z/get :paths))
+              edited (if paths-loc
+                       (z/append-child paths-loc canonical)
+                       (assoc-in-source root [:tui :projects :paths] [canonical]))
+              output (z/root-string edited)
+              ;; Follow a user's config symlink without replacing the link itself.
+              ^Path target (if (config-exists? path)
+                             (.toRealPath (fs/path path) (make-array LinkOption 0))
+                             (.toAbsolutePath (fs/path path)))
+              parent (.getParent target)]
+          (Files/createDirectories parent (make-array FileAttribute 0))
+          (let [temp (Files/createTempFile parent ".config.edn-" ".tmp"
+                                           (make-array FileAttribute 0))]
+            (try
+              (when source
+                (Files/copy target temp (into-array CopyOption
+                                         [StandardCopyOption/REPLACE_EXISTING
+                                          StandardCopyOption/COPY_ATTRIBUTES])))
+              (spit (str temp) output)
+              (when-not (= expected-source (update-source path))
+                (throw (ex-info "Config changed. Go back and confirm the project again." {})))
+              (Files/move temp target (into-array CopyOption
+                                       [StandardCopyOption/ATOMIC_MOVE
+                                        StandardCopyOption/REPLACE_EXISTING]))
+              (normalize-config (edn/read-string output))
+              (finally (Files/deleteIfExists temp)))))))))

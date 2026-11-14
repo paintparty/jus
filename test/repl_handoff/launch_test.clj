@@ -1,22 +1,18 @@
 (ns repl-handoff.launch-test
   (:require [clojure.string :as str]
             [clojure.test :refer [deftest is testing]]
+            [jus.tui.logo :as logo]
             [repl-handoff.launch :as launch])
   (:import (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)))
 
 (def logo-fixtures
-  [["Windows 11" "*"]
-   ["windows 10" "*"]
-   ["Linux" "◒" #_"☯"]
-   ["Mac OS X" "◒" #_"☯"]])
-
-(deftest logo-follows-the-operating-system
-  (doseq [[os-name expected] logo-fixtures]
-    (is (= expected (launch/logo os-name)))))
+  [["Windows 11" "◒"]
+   ["Linux" "◒"]
+   ["Mac OS X" "☯"]])
 
 (deftest spinner-renders-the-logo-from-its-environment
-  (doseq [logo (distinct (map second logo-fixtures))]
+  (doseq [logo (distinct (conj (mapv (comp logo/for-os first) logo-fixtures) "*"))]
     (let [state-dir (.toFile
                      (Files/createTempDirectory
                       "jus-spinner-test-"
