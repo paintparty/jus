@@ -9,10 +9,14 @@
             [jus.tui.animation :as animation]
             [jus.tui.config :as config]
             [jus.tui.content :as content]
+            [jus.tui.footer :as footer]
             [jus.tui.data :as data]
             [jus.tui.generator :as generator]
             [jus.tui.menu :as menu]
             [jus.tui.markdown :as markdown]
+            [jus.tui.news :as news]
+            [jus.tui.news.runtime :as news-runtime]
+            [jus.tui.news.ui :as news-ui]
             [jus.tui.projects :as projects]
             [jus.tui.repls :as repls]
             [jus.tui.style :as style :refer [error-prefix]])
@@ -105,6 +109,7 @@
                        {:label     l
                         :nav-label "Project Wizard"})
    :projects         {:label "Command Central" :nav-label "Command Central"}
+   :news             {:label "Newsfeed" :nav-label "Newsfeed"}
    :repl             (let [l "Launch Interactive REPL"]
                        {:label     l
                         :nav-label l})
@@ -115,14 +120,21 @@
                        {:label     l
                         :nav-label l})})
 
-(defn main-menu-choices []
-  (vec (concat
-        (when dev-success-sequence? [:success-sequence])
-        (when dev-opening-sequence? [:opening-sequence])
-        [:wizard :projects :repl :resources :about])))
+(defn main-menu-choices
+  ([] (main-menu-choices nil))
+  ([state]
+   (vec (concat
+         (when dev-success-sequence? [:success-sequence])
+         (when dev-opening-sequence? [:opening-sequence])
+         [:wizard :projects :repl :resources :about]
+         (when (seq (get-in state [:news :channels])) [:news])))))
 
-(defn main-menu-items []
-  (mapv #(get-in main-menu-items* [% :label]) (main-menu-choices)))
+(defn main-menu-items
+  ([] (main-menu-items nil))
+  ([state]
+   (mapv #(if (= % :news)
+            (str "Newsfeed (" (reduce + 0 (map count (vals (get-in state [:news :messages])))) ")")
+            (get-in main-menu-items* [% :label])) (main-menu-choices state))))
 
 (def rebel-readline-version "0.1.11")
 
@@ -248,6 +260,7 @@
   {:step          :main-menu
    :global-config global-config
    :menu-idx      0
+   :news          (news/initial-state (:channels (config/news-settings global-config)))
    :term-width    80
    :term-height   24
    :global-config-exists? true
@@ -826,7 +839,7 @@
       :else [state nil])))
 
 (defn- dashboard-items [state]
-  (vec (concat [{:label "Add a new project" :section :add}]
+  (vec (concat [{:label "Add an existing project" :section :add}]
                (map #(assoc % :section :recent) (get-in state [:catalog :recent]))
                (map #(assoc % :section :other) (get-in state [:catalog :other])))))
 
@@ -865,13 +878,18 @@
                                            (dashboard-default-idx (:catalog state)))
          :error nil :dashboard-busy? false))
 
-(declare render-menu-overflow-row)
+(declare render-menu-overflow-row display-user-path)
+
+(defn- project-task-items [state]
+  (cond-> [{:id :readme :label "Read the README" :desc "Display the existing README.md"}]
+    (not (:project-changelog? state))
+    (conj {:id :changelog :label "Create a CHANGELOG" :desc "Create a blank CHANGELOG.md"})))
 
 (defn- readme-page [state]
   (content/page-lines (get-in state [:readme :lines] [""]) (:term-width state)
                       (max 1 (- (:term-height state)
                                 (if (or (:readme-rendering? state)
-                                        (get-in state [:readme :notice])) 17 16)))
+                                        (get-in state [:readme :notice])) 19 18)))
                       (or (:readme-offset state) 0)
                       {:padding-start 4 :dividers? true
                        :render-overflow #(render-menu-overflow-row
@@ -929,6 +947,13 @@
         [(assoc state :readme (:readme message) :readme-rendering? false) nil]
         [state nil])
 
+      (= :changelog-written (:type message))
+      (if (= (:request message) (:dashboard-request state))
+        [(cond-> (assoc state :dashboard-busy? false :project-task-error (:error message))
+           (:path message) (assoc :project-changelog? true :menu-idx 0
+                                  :project-task-message (str "✓ Wrote " (display-user-path (:path message))))) nil]
+        [state nil])
+
       (:dashboard-busy? state) [state nil]
 
       escape?
@@ -958,6 +983,8 @@
                     :project-menu-idx (:menu-idx state) :error nil) nil]
             (if (and selected (not (:missing? selected)))
               [(assoc state :step :project-tasks :selected-project selected
+                      :project-changelog? (projects/changelog-exists? (:path selected))
+                      :project-task-message nil :project-task-error nil
                       :project-menu-idx (:menu-idx state) :menu-idx 0 :error nil) nil]
               [(assoc state :error "Project directory is unavailable. Update its path in config.edn.") nil]))
           up? [(update state :menu-idx #(max 0 (dec %))) nil]
@@ -1032,19 +1059,28 @@
         :else [state nil])
 
       (= step :project-tasks)
-      (if enter?
+      (cond
+        up? [(update state :menu-idx #(max 0 (dec %))) nil]
+        down? [(update state :menu-idx #(min (dec (count (project-task-items state))) (inc %))) nil]
+        enter?
         (let [request (random-uuid)]
-          [(assoc state :dashboard-busy? true :dashboard-request request :error nil)
+          [(assoc state :dashboard-busy? true :dashboard-request request :error nil
+                  :project-task-error nil :project-task-message nil)
            (program/cmd
             (fn []
               (try
-                {:type :readme-loaded :request request
-                 :readme (markdown/render-readme
-                          (projects/readme (get-in state [:selected-project :path]))
-                          (:term-width state))}
+                (if (= :changelog (:id (nth (project-task-items state) (:menu-idx state))))
+                  {:type :changelog-written :request request
+                   :path (projects/create-changelog! (:selected-project state))}
+                  {:type :readme-loaded :request request
+                   :readme (markdown/render-readme
+                            (projects/readme (get-in state [:selected-project :path]))
+                            (:term-width state))})
                 (catch Exception error
-                  {:type :readme-loaded :request request :error (.getMessage error)}))))])
-        [state nil])
+                  {:type (if (= :changelog (:id (nth (project-task-items state) (:menu-idx state))))
+                           :changelog-written :readme-loaded)
+                   :request request :error (.getMessage error)}))))])
+        :else [state nil])
 
       (= step :project-readme)
       (let [{:keys [offset max-offset visible-lines]} (readme-page state)
@@ -1063,7 +1099,7 @@
 
       :else [state nil])))
 
-(defn update-fn
+(defn- update-app
   "Charm.clj update. Dispatches on animation state, then wizard step."
   [state msg]
   (cond
@@ -1244,7 +1280,7 @@
       (msg/key-match? msg "enter")
       (case (:step state)
         :main-menu
-        (case (nth (main-menu-choices) (:menu-idx state) nil)
+        (case (nth (main-menu-choices state) (:menu-idx state) nil)
           :success-sequence
           (let [confetti (animation/init-confetti (:term-width state)
                                                   (:term-height state))]
@@ -1275,6 +1311,9 @@
                         :repl-installed (repls/installed-ids)) nil]
 
           :projects (dashboard-load state)
+
+          :news [(assoc state :step :news-channels :news-index 0
+                        :news-menu-idx (:menu-idx state) :error nil) nil]
 
           :resources
           [(assoc state :step :resources
@@ -1343,7 +1382,7 @@
           (and (= :repl-menu (:step state))
                (msg/key-match? msg "j")))
       (let [limit (case (:step state)
-                    :main-menu (dec (count (main-menu-items)))
+                    :main-menu (dec (count (main-menu-items state)))
                     :repl-menu (dec (count (repls/available-options)))
                     :resources (dec (count (resource-items state)))
                     0)]
@@ -1649,6 +1688,23 @@
               :else [state nil]))
 
           [state nil])))))
+
+(defn update-fn
+  "Dispatch feed results globally, retaining the feed when other screens rebuild state."
+  [state message]
+  (cond
+    (= :news-updated (:type message))
+    (if (= (:service-id message) (get-in state [:news-service :id]))
+      [(news-ui/preserve-position state (assoc state :news (:news message)))
+       (news-runtime/next-update-command (:news-service state))]
+      [state nil])
+
+    (and (news-ui/steps (:step state)) (not (msg/window-size? message)))
+    (news-ui/update-screen state message)
+
+    :else
+    (let [[next-state command] (update-app state message)]
+      [(merge next-state (select-keys state [:news :news-service])) command])))
 
 ;; VVVVVVVV           VVVVVVVVIIIIIIIIIIEEEEEEEEEEEEEEEEEEEEEEWWWWWWWW                           WWWWWWWW
 ;; V::::::V           V::::::VI::::::::IE::::::::::::::::::::EW::::::W                           W::::::W
@@ -2069,11 +2125,11 @@
                            [(menu-blank-row inner-w) bot]))))
 
 (defn help-bar [step]
-  (str "\n\n  "
+  (footer/render (str
        "Enter" (style/secondary (if (= :repl-install-menu step) ": copy,  " ": next,  "))
        "↑↓" (style/secondary ": menus,  ")
        "Esc" (style/secondary ": back,  ")
-       "Ctrl-C" (style/secondary ": quit")))
+       "Ctrl-C" (style/secondary ": quit"))))
 
 (defn- helper-text
   ([s] (helper-text s :secondary))
@@ -2177,9 +2233,8 @@
         shared-footer (let [footer (help-bar :repl-install-menu)]
                         (if (<= (count (strip-ansi (last (str/split-lines footer)))) width)
                           footer
-                          (str "\n\n  "
-                               (style/secondary
-                                (fit-repl-text "Enter · ↑↓ · Esc · Ctrl-C" content-width)))))
+                          (footer/render (style/secondary
+                                          (fit-repl-text "Enter · ↑↓ · Esc · Ctrl-C" content-width)))))
         section-gap (if (< height 18) "\n" "\n\n\n")
         items (repl-install-items (:repl-id state))
         selected (:menu-idx state)
@@ -2229,14 +2284,13 @@
       (str header
            "\n\n"
            (helper-slot compact-confirmation-lines :normal)
-           "\n  " (style/secondary "Esc · Ctrl-C")
+           (footer/render (style/secondary "Esc · Ctrl-C"))
            "\n")
 
       copied?
       (str header
            "\n\n\n"
            (helper-slot confirmation-lines :normal)
-           "\n"
            shared-footer
            "\n")
 
@@ -2249,7 +2303,6 @@
            (render-repl-rows items selected width capacity false padded?)
            (when (seq helper)
              (str "\n" (helper-slot helper helper-tone)))
-           "\n"
            shared-footer
            "\n"))))
 
@@ -2270,7 +2323,7 @@
                                                            :nav-label)
                                                        (:resource-labels state)))))))
         items (case step
-                :main-menu (main-menu-items)
+                :main-menu (main-menu-items state)
                 :repl-menu (let [col2-start (->> (repls/available-options)
                                                  (map #(some-> % :label count))
                                                  (apply max)
@@ -2290,7 +2343,9 @@
         active-desc (when (and (= step :resources) (narrow-resource-menu? state))
                       (let [d (:desc (active-resource state))]
                         (when (seq d) d)))
-        error-message (:error state)
+        error-message (or (:error state)
+                          (when (= step :main-menu)
+                            (:error (config/news-settings (:global-config state)))))
         error-lines (if error-message
                       (+ (count (str/split-lines error-message))
                          (if (= step :main-menu) 0 1))
@@ -2331,7 +2386,6 @@
          (when error-message
            (str (if (= step :main-menu) "\n  " "\n\n  ")
                 (style/error error-message)))
-         "\n  "
          (help-bar step)
          "\n")))
 
@@ -2343,7 +2397,6 @@
        (style/italic (-> main-menu-items* :about :nav-label))
        "\n\n\n  About Jus\n"
        (content/render about-content (:term-width state))
-       "\n"
        (help-bar :about)
        "\n"))
 
@@ -2403,6 +2456,8 @@
         page (when (= step :project-readme) (readme-page state))]
     (str (main-menu-logo-prefix) main-menu-logo-with-nav
          (style/italic "Command Central")
+         (when (#{:project-tasks :project-readme} step)
+           (str nav-separator (style/italic (:label selected))))
          "\n\n\n  "
          (case step
            :projects "Select Project"
@@ -2410,7 +2465,7 @@
            :project-favorites "Choose a favorite directory to browse"
            :project-browse "Navigate and select an existing project directory"
            :project-add-confirm "Confirm adding this project"
-           :project-tasks (str (:label selected) " — Select a task")
+           :project-tasks (str "Select a task for the project: " (:label selected))
            :project-readme (display-user-path (get-in state [:readme :path])))
          "\n"
          (case step
@@ -2425,8 +2480,8 @@
            :project-add-confirm
            (render-project-confirmation state)
            :project-tasks
-           (render-resource-list [{:label "Read the README" :desc "Page the existing README"}]
-                                 0 (:term-width state) 1)
+           (render-resource-list (project-task-items state)
+                                 (:menu-idx state) (:term-width state) (count (project-task-items state)))
            :project-readme (:rendered page))
          (when (= step :projects)
            (str (when-let [path (:path (nth (dashboard-items state) (:menu-idx state) nil))]
@@ -2440,22 +2495,26 @@
                 (when (some :activity-limited? (concat (get-in state [:catalog :recent])
                                                        (get-in state [:catalog :other])))
                   "\n  Activity scan incomplete for some projects; ordering may be approximate.")))
-         (when (= step :project-tasks)
-           (str "\n  " (style/secondary (display-user-path (:path selected)))))
+         (when (and (= step :project-tasks) (:project-task-message state))
+           (str "\n  " (style/success (:project-task-message state))))
+         (when (and (= step :project-tasks) (:project-task-error state))
+           (str "\n  " (style/error "⊗ ERROR: Changelog not written!")
+                "\n" (str/join "\n" (map #(str "    " (style/error %))
+                                          (style/helper-lines (:project-task-error state)
+                                                              (max 1 (- (:term-width state) 4)))))))
          (when (:dashboard-busy? state)
-           (str "\n  " (if (= step :project-tasks) "Reading README..." "Adding project...")))
+           (str "\n  " (if (= step :project-tasks) "Working..." "Adding project...")))
          (when-let [error (:error state)] (str "\n  " (style/error error)))
          (when (and page (or (:readme-rendering? state) (get-in state [:readme :notice])))
            (str "\n  " (style/secondary
                            (if (:readme-rendering? state)
                              "Reflowing README..."
                              (or (get-in state [:readme :notice]) "")))))
-         "\n  "
-         (if page
+         (footer/render (if page
            (str "↑↓: scroll, Space/PgDn/PgUp: page, Esc: back  "
                 (inc (:offset page)) "–" (+ (:offset page) (:visible-lines page))
                 "/" (:total-lines page))
-           "Enter: next, ↑↓: menus, Esc: back, Ctrl-C: quit")
+           "Enter: next, ↑↓: menus, Esc: back, Ctrl-C: quit"))
          "\n")))
 
 (declare view*)
@@ -2486,6 +2545,9 @@
 
     (= :about (:step state))
     (render-about-screen state)
+
+    (news-ui/steps (:step state))
+    (news-ui/render state render-list (str (main-menu-logo-prefix) main-menu-logo-with-nav))
 
     (dashboard-steps (:step state))
     (render-dashboard state)
@@ -2569,7 +2631,7 @@
            "\n\n"
            (render-list choices choice-idx (:term-width state)
                         (menu-row-capacity state))
-           "\n\n  " (style/secondary "Esc or Ctrl-C: skip")))
+           (footer/render (style/secondary "Esc or Ctrl-C: skip"))))
 
     ;; Wizard steps
     :else
@@ -2707,7 +2769,6 @@
            (if (:forward-alert state)
              (str "\n\n" (style/primary "  ! Press Enter to submit choice and advance to next."))
              "")
-           "\n  "
            (help-bar step)
            "\n"))))
 
@@ -2861,13 +2922,21 @@
                                              :global-config-exists? exists?)]
     (loop [state initial-state
            opening? true]
-      (let [final-state (program/run {:init       #(if opening?
-                                                     (animation/initialize-main-menu state)
-                                                     [state nil])
+      (let [channels (:channels (config/news-settings (:global-config state)))
+            service (when (seq channels) (news-runtime/start! channels (:news state)))
+            state (-> state (assoc :news-service service) (assoc-in [:news :channels] channels))
+            final-state (try
+                          (program/run {:init       #(let [[initial command]
+                                                           (if opening?
+                                                             (animation/initialize-main-menu state)
+                                                             [state nil])]
+                                                       [initial (program/batch command
+                                                                 (news-runtime/next-update-command service))])
                                       :update     #'update-fn
                                       :view       #'view
                                       :ctrl-c     :message
-                                      :alt-screen true})]
+                                      :alt-screen true})
+                          (finally (news-runtime/stop! service)))]
         (cond
           (= :repl (:action final-state))
           (let [exit-code (if-let [executable (:repl-executable final-state)]

@@ -3,6 +3,7 @@
 
 (def suites
   {:unit        ['charm.render.core-test
+                 'jus.tui.news-test
                  'jus.tui.core-test
                  'jus.tui.repls-test
                  'jus.tui.repl-flow-test

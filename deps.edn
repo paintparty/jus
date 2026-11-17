@@ -5,6 +5,7 @@
            rewrite-clj/rewrite-clj {:mvn/version "1.2.50"}
            de.timokramer/charm.clj {:mvn/version "0.2.125"}
            babashka/fs             {:mvn/version "0.5.34"}
+           org.jsoup/jsoup         {:mvn/version "1.23.2"}
            babashka/process        {:mvn/version "0.6.25"}}
 
  :aliases {:run   {:main-opts ["-m" "jus.tui.core"]}

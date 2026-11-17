@@ -37,7 +37,7 @@ stty rows 24 columns 90 < $spawn_out(slave,name)
 expect_text {New Project Wizard}
 send -- "\033\[B\r"
 expect_text {Select Project}
-expect_text {Add a new project}
+expect_text {Add an existing project}
 send -- "\r"
 expect_text {Choose from my favorites...}
 expect_text {Browse file tree...}
@@ -74,16 +74,25 @@ send -- "\r"
 expect_text {Select Project}
 expect_text {demo-project}
 send -- "\r"
-expect_text {Select a task}
+expect_text {Select a task for the project:}
 expect_text {Read the README}
 send -- "\r"
 expect_text {README line 1}
 send -- "\033\[6~"
-expect_text {README line 16}
+expect_text {README line 12}
 send -- "\033\[F"
 expect_text {README line 80}
 send -- "\033"
-expect_text {Select a task}
+expect_text {Select a task for the project:}
+send -- "\033\[B\r"
+expect_text {✓ Wrote}
+expect_text {CHANGELOG.md}
+set channel [open [file join $project CHANGELOG.md] r]
+set changelog [read $channel]
+close $channel
+foreach expected {{# Changelog} {demo-project:} {## Unreleased} {## 0.1.0} {- Initial commit.}} {
+  if {[string first $expected $changelog] < 0} {error "Changelog missing '$expected'"}
+}
 send -- "\033"
 expect_text {Select Project}
 send -- "\003"
@@ -98,4 +107,4 @@ foreach expected {{preserve my settings} {/unused-favorite} {demo-project}} {
 }
 log_file
 file delete -force $root
-puts {PASS projects dashboard: favorites or home browser, confirm/cancel config, preserve settings, read/page README, return to project menu}
+puts {PASS projects dashboard: browse, confirm/cancel config, read/page README, create CHANGELOG, return to project menu}

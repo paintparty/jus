@@ -3,7 +3,9 @@
             [rewrite-clj.node :as node]
             [rewrite-clj.parser :as parser]
             [clojure.java.io :as io]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [jus.tui.git-deps :as git-deps]
+            [jus.tui.readme :as readme])
   (:import (java.nio.file FileVisitOption Files LinkOption Path Paths)
            (java.util.concurrent TimeUnit)))
 
@@ -250,6 +252,7 @@
          ::out         (capture-stream-async (.getInputStream process))
          ::err         (capture-stream-async (.getErrorStream process))
          ::target-dir  (:target-dir request)
+         ::request     request
          ::config-dir  config-dir
          ::cleanup     (config-cleanup config-dir)})
       (catch Exception e
@@ -272,13 +275,16 @@
                     :err       @(::err handle)}]
         (if (zero? exit-code)
           (try
+            (when (= "lib" (template-name (:template (::request handle))))
+              (let [data (readme/write-library-readme! (::request handle))]
+                (git-deps/scaffold! (::target-dir handle) data)))
             (format-generated-bb-edn! (::target-dir handle))
             result
             (catch Exception e
               (assoc result
                      :exit-code 1
                      :err (str (:err result)
-                               "\nFailed to format generated bb.edn: "
+                               "\nFailed to finish generated project: "
                                (.getMessage e)))))
           result))
       (finally

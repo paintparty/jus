@@ -23,6 +23,25 @@
     :developers ["Jane Developer"]
     :parent-dirs ["/tmp/projects"]}))
 
+(deftest controls-have-exactly-two-blank-rows-above-them
+  (let [base (core/main-menu-state example-global-config)
+        selected {:label "demo" :path "/tmp/demo"}
+        screens [base
+                 (assoc base :step :about)
+                 (assoc base :step :repl-menu :repl-installed #{})
+                 (assoc base :step :projects :catalog {:recent [] :other []})
+                 (assoc base :step :project-tasks :selected-project selected)
+                 (assoc base :step :project-readme :selected-project selected
+                             :readme {:path "/tmp/demo/README.md" :lines ["README text"]})
+                 (core/project-wizard-state example-global-config)]]
+    (doseq [state screens]
+      (let [lines (str/split-lines (core/strip-ansi (core/view state)))
+            controls (last lines)
+            preceding (take-last 3 (butlast lines))]
+        (is (str/starts-with? controls "  ") (str (:step state)))
+        (is (every? str/blank? (take-last 2 preceding)) (str (:step state)))
+        (is (not (str/blank? (first preceding))) (str (:step state)))))))
+
 (defn- rendered-glyph-cells
   [rendered]
   (vec

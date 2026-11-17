@@ -22,6 +22,10 @@ Scaffold new projects, launch REPLs, and explore community resources.
 Built on [Babashka](https://babashka.org/) + [Charm](https://github.com/TimoKramer/charm.clj), with help from [cljfmt](https://github.com/weavejester/cljfmt).
 
 Project Wizard dispatches to [deps-new](https://github.com/seancorfield/deps-new).
+Library projects receive jus's README template, filled with the project details,
+dependency coordinate, source namespace, date, and selected license.
+They also include a git dependency guide and `bb git-deps-docs` to refresh it
+after tagging a release (`bb git-deps-docs v0.1.0` selects a specific tag).
 
 <br>
 
@@ -139,7 +143,7 @@ For running tasks in projects that contain a `bb.edn`, check out [bbtl](https://
 ## Command Central
 
 Choose **Command Central** to browse existing projects and read their READMEs.
-Use **Add a new project**, then **Choose from my favorites...** to start browsing
+Use **Add an existing project**, then **Choose from my favorites...** to start browsing
 from a configured `:parent-dirs` directory, or **Browse file tree...** to start
 at home. Confirm the project directory and config destination before saving.
 You can also edit
@@ -163,7 +167,7 @@ and build outputs) and symbolic links are skipped. Each scan is bounded to
 identified in the dashboard. Opening Command Central automatically reloads
 config and refreshes activity. Press **R** to refresh the projects list while
 the dashboard is open. The first recent project is selected initially; if no
-projects are configured, **Add a new project** is selected.
+projects are configured, **Add an existing project** is selected.
 
 **Read the README** opens an existing top-level README, preferring Markdown.
 Markdown is rendered with [Glow](https://github.com/charmbracelet/glow) when it
@@ -172,6 +176,38 @@ dim, padded boxes labeled with their filenames. Without Glow, the viewer falls b
 Use arrows to scroll, Space/PgDn/PgUp to page, Home/End to jump, and Escape to
 return. The README wizard, test wizard, review wizard, and reorientation tasks
 are outside this first version.
+
+**Create a CHANGELOG** appears when the project has no `CHANGELOG.md`. It creates
+the starter changelog without replacing an existing file and reports the result
+below the task menu. The description comes from `deps.edn` metadata or the README.
+
+## Newsfeed
+
+Add public Clojurians archive channels to `~/.config/jus/config.edn`
+(or `$XDG_CONFIG_HOME/jus/config.edn`), alongside the existing `:projects` map:
+
+```clojure
+{:tui {:projects {;; Keep your existing project settings here.
+                 }
+       :news {:channels ["announcements" "releases" "events"]}}}
+```
+
+Restart Jus after changing subscriptions. **Newsfeed** appears only when channels
+are configured. Choose a channel to read its top-level posts from the last seven
+UTC calendar days, newest first. Counts are recent posts, rather than unread
+messages. Empty channels remain visible with `(0)`.
+
+History loads in the background. Refreshes run about every five minutes while
+Jus is open, checking today and yesterday for delayed archive updates. Posts
+discovered after the initial history loads are marked **NEW** for this session.
+There is no Slack login or persistent read tracking. Replies and reactions stay
+in the [public archive](https://clojurians-log.clojureverse.org/), linked from
+each post. The feed's freshness depends on that archive.
+
+Use arrows to scroll, Space/PgDn/PgUp to page, Home/End to jump, and Escape to
+return to channels. Links are underlined and clickable in terminals that support
+them. Network errors preserve cached posts and trigger slower retries.
+An absent or empty `:channels` vector disables news and its background requests.
 
 ## Roadmap 
 Based on usage patterns and subject to community feedback going forward, here is a short list of features being considered:

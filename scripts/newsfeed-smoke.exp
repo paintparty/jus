@@ -1,0 +1,66 @@
+#!/usr/bin/env expect
+# Exercise the real Babashka TUI and background worker using saved archive HTML.
+set timeout 30
+log_user [expr {[info exists env(JUS_PTY_VERBOSE)] ? 1 : 0}]
+set root [exec mktemp -d /tmp/jus-newsfeed.XXXXXX]
+set config_home [file join $root config]
+set config_path [file join $config_home jus config.edn]
+file mkdir [file dirname $config_path]
+log_file -a [file join $root terminal.log]
+set channel [open $config_path w]
+puts $channel {{:tui {:news {:channels ["announcements" "events"]}}}}
+close $channel
+
+proc expect_text {text} {
+  expect {
+    -exact $text {}
+    timeout {error "Timed out waiting for '$text' (artifacts: $::root)"}
+    eof {error "Unexpected exit waiting for '$text' (artifacts: $::root)"}
+  }
+}
+
+set driver {
+  (require '[jus.tui.core :as core]
+           '[jus.tui.animation :as animation]
+           '[jus.tui.news.archive :as archive])
+  (alter-var-root #'animation/opening-animation? (constantly false))
+  (alter-var-root #'core/flash-on-enter? (constantly false))
+  (let [day (java.time.LocalDate/now java.time.ZoneOffset/UTC)
+        posts (archive/parse-day "announcements" "2026-11-15"
+                                 (slurp "test/jus/tui/fixtures/news-day.html"))]
+    (alter-var-root #'archive/fetch-day
+                    (constantly (fn [channel date _]
+                                  (if (and (= channel "announcements") (= date day))
+                                    (mapv #(assoc % :timestamp (java.time.Instant/now)) posts)
+                                    [])))))
+  (System/exit (core/run-cli!))
+}
+spawn -noecho env "XDG_CONFIG_HOME=$config_home" bb -e $driver
+stty rows 24 columns 90 < $spawn_out(slave,name)
+expect_text {Newsfeed (2)}
+send -- "\033\[B\033\[B\033\[B\033\[B\033\[B\r"
+expect_text {#announcements (2)}
+expect_text {#events (0)}
+send -- "\033\[B\r"
+expect_text {No posts in the last 7 days.}
+send -- "\033"
+expect_text {#announcements (2)}
+send -- "\033\[A\r"
+expect_text {Meetup}
+send -- "\033\[F"
+expect_text {After}
+stty rows 28 columns 72 < $spawn_out(slave,name)
+exec kill -WINCH [exp_pid]
+send -- "\033\[H"
+expect_text {Meetup}
+send -- "\003"
+expect eof
+set status [wait]
+if {[lindex $status 3] != 130} {error "Expected Ctrl-C exit 130: $status"}
+set channel [open [file join $root terminal.log] r]
+set transcript [read $channel]
+close $channel
+if {[string first "\033\]8;;https://example.org" $transcript] < 0} {
+  error "No terminal hyperlink in transcript ($root)"
+}
+puts "Newsfeed navigation, paging, resize, hyperlinks and shutdown passed (artifacts: $root)"

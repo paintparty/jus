@@ -31,6 +31,77 @@
     (core/update-fn state ((:fn command)))
     [state nil]))
 
+(deftest project-tasks-create-a-changelog-and-update-the-menu
+  (temporary
+   (fn [root]
+     (spit (str (fs/path root "README.md")) "# Demo\n\n**A useful library.**<br>\n")
+     (let [selected {:path (str root) :label "demo"}
+           initial (assoc (core/main-menu-state {}) :step :projects :menu-idx 1
+                          :catalog {:recent [selected] :other []})
+           [tasks _] (event initial :enter)
+           before (core/strip-ansi (core/view tasks))
+           [chosen _] (event tasks :down)
+           [written _] (complete (event chosen :enter))
+           after (core/strip-ansi (core/view written))
+           changelog (str (fs/path root "CHANGELOG.md"))]
+       (is (str/includes? before "Command Central ╱ demo"))
+       (is (str/includes? before "Select a task for the project: demo"))
+       (is (str/includes? before "Create a CHANGELOG"))
+       (is (not (str/includes? before (str root))))
+       (is (= "# Changelog\ndemo: A useful library.\n\n\n## Unreleased\n\n\n## 0.1.0\n\n### Added\n- Initial commit.\n"
+              (slurp changelog)))
+       (is (= :project-tasks (:step written)))
+       (is (= 0 (:menu-idx written)))
+       (is (not (str/includes? after "Create a CHANGELOG")))
+       (is (str/includes? after (str "✓ Wrote " changelog)))
+       (is (str/includes? after "\n\n\n  Enter: next"))
+       (let [[reopened _] (event initial :enter)]
+         (is (:project-changelog? reopened)))))))
+
+(deftest empty-changelogs-can-be-initialized-from-the-project-menu
+  (doseq [filename ["CHANGELOG.md" "changelog.md" "ChangeLog.md"]]
+    (temporary
+     (fn [root]
+       (let [path (str (fs/path root filename))
+             selected {:path (str root) :label "demo"}
+             initial (assoc (core/main-menu-state {}) :step :projects :menu-idx 1
+                            :catalog {:recent [selected] :other []})]
+         (spit path "")
+         (let [[tasks _] (event initial :enter)
+               [chosen _] (event tasks :down)
+               [written _] (complete (event chosen :enter))]
+           (is (str/includes? (core/strip-ansi (core/view tasks)) "Create a CHANGELOG"))
+           (is (str/includes? (slurp path) "## Unreleased"))
+           (is (= [filename] (mapv #(str (fs/file-name %)) (fs/list-dir root))))
+           (is (:project-changelog? written))
+           (is (not (str/includes? (core/strip-ansi (core/view written)) "Create a CHANGELOG")))))))))
+
+(deftest changelog-errors-keep-the-selected-task-and-never-overwrite
+  (temporary
+   (fn [root]
+     (let [selected {:path (str root) :label "demo"}
+           state (assoc (core/main-menu-state {}) :step :project-tasks :menu-idx 1
+                        :selected-project selected)
+           [busy command] (event state :enter)
+           ;; Simulate a file appearing after the menu was shown.
+           path (str (fs/path root "changelog.md"))]
+       (spit path "keep this changelog")
+       (let [[failed _] (complete [busy command])
+             rendered (core/strip-ansi (core/view failed))]
+         (is (= "keep this changelog" (slurp path)))
+         (is (str/includes? rendered "⊗ ERROR: Changelog not written!"))
+         (is (str/includes? rendered "\n    A CHANGELOG.md already exists."))
+         (is (str/includes? rendered "> Create a CHANGELOG"))
+         (is (= 1 (:menu-idx failed))))
+       (fs/delete path)
+       (with-redefs [projects/create-changelog! (fn [_] (throw (ex-info "Permission denied" {})))]
+         (let [[failed _] (complete (event state :enter))]
+           (is (str/includes? (core/strip-ansi (core/view failed)) "\n    Permission denied"))
+           (is (= 1 (:menu-idx failed)))))
+       (spit (str (fs/path root "deps.edn")) "{:description \"Metadata description\"}")
+       (projects/create-changelog! selected)
+       (is (str/includes? (slurp (str (fs/path root "CHANGELOG.md"))) "demo: Metadata description"))))))
+
 (deftest readme-layout-is-cached-and-resize-results-cannot-overwrite-newer-layouts
   (let [calls (atom [])
         readme {:path "/tmp/README.md" :text "# Hello" :width 80
@@ -276,7 +347,7 @@
         screen (core/strip-ansi (core/view state))
         dividers (filter #(re-matches #" │    ─+    │" %)
                          (str/split-lines screen))]
-    (is (< (str/index-of screen "Add a new project") (str/index-of screen "> bazlib")))
+    (is (< (str/index-of screen "Add an existing project") (str/index-of screen "> bazlib")))
     (is (< (str/index-of screen "> bazlib") (str/index-of screen "aaa")))
     (is (= 1 (count dividers)))
     (is (not (str/includes? screen "├")))
@@ -309,4 +380,4 @@
              (let [[refreshed _] (complete (event reopened "r"))]
                (is (= 0 (:menu-idx refreshed)))
                (is (= [] (config/project-paths (:global-config refreshed))))
-               (is (str/includes? (core/strip-ansi (core/view refreshed)) "> Add a new project"))))))))))
+               (is (str/includes? (core/strip-ansi (core/view refreshed)) "> Add an existing project"))))))))))

@@ -1,7 +1,8 @@
 (ns jus.tui.projects
   (:require [babashka.fs :as fs]
+            [clojure.edn :as edn]
             [clojure.string :as str])
-  (:import (java.nio.file Files Path)
+  (:import (java.nio.file Files Path StandardOpenOption)
            (java.nio.file.attribute BasicFileAttributes)))
 
 (def recent-days 14)
@@ -98,3 +99,52 @@
           (throw (ex-info "README is larger than the 2 MB viewer limit." {})))
         {:path (str path) :text (slurp (str path))})
       (throw (ex-info "No README found in the project root." {})))))
+
+(defn- changelog-paths
+  [directory]
+  (filter #(= "changelog.md" (str/lower-case (str (fs/file-name %))))
+          (fs/list-dir directory)))
+
+(defn changelog-exists?
+  "Recognize a nonempty changelog or a conflicting directory, regardless of case."
+  [directory]
+  (boolean (some #(or (not (fs/regular-file? %)) (pos? (Files/size %)))
+                 (changelog-paths directory))))
+
+(defn- description [directory]
+  (or (try
+        (let [path (fs/path directory "deps.edn")]
+          (when (fs/regular-file? path)
+            (let [value (:description (edn/read-string (slurp (str path))))]
+              (when (and (string? value) (not (str/blank? value))) value))))
+        (catch Exception _ nil))
+      (try
+        (some (fn [paragraph]
+                (let [text (str/trim paragraph)]
+                  (when-not (or (str/blank? text)
+                                (re-find #"^(?:#|<|!\[|```|~~~|\|)" text))
+                    (-> text
+                        (str/replace #"<[^>]*>" "")
+                        (str/replace #"\[([^\]]+)\]\([^)]*\)" "$1")
+                        (str/replace #"[*`]" "")
+                        (str/replace #"\s+" " ")
+                        str/trim))))
+              (str/split (:text (readme directory)) #"\r?\n\s*\r?\n"))
+        (catch Exception _ nil))
+      "FIXME: Add a project description."))
+
+(defn create-changelog!
+  "Create or initialize an empty changelog; never replace existing content."
+  [{:keys [path label]}]
+  (when (changelog-exists? path)
+    (throw (ex-info "A CHANGELOG.md already exists." {})))
+  (let [existing (first (sort-by str (changelog-paths path)))
+        target (or existing (fs/path path "CHANGELOG.md"))
+        content (str "# Changelog\n" label ": " (description path)
+                     "\n\n\n## Unreleased\n\n\n## 0.1.0\n\n### Added\n- Initial commit.\n")]
+    (Files/write target (.getBytes content "UTF-8")
+                 (into-array StandardOpenOption
+                             (if existing
+                               [StandardOpenOption/WRITE]
+                               [StandardOpenOption/CREATE_NEW StandardOpenOption/WRITE])))
+    (str target)))

@@ -4,6 +4,7 @@
             [clojure.edn :as edn]
             [clojure.string :as str]
             [jus.tui.projects :as projects]
+            [jus.tui.news.archive :as news-archive]
             [rewrite-clj.zip :as z])
   (:import (java.nio.charset StandardCharsets)
            (java.nio.file FileAlreadyExistsException Files LinkOption OpenOption CopyOption StandardCopyOption
@@ -124,6 +125,19 @@
 (defn project-paths [config]
   (get-in (normalize-config config) (conj projects-path :paths) []))
 
+(defn news-settings
+  "Validate news independently so a bad subscription does not discard project settings."
+  [config]
+  (let [settings (get-in config [:tui :news])
+        channels (when (map? settings) (:channels settings))]
+    (if (and (or (nil? settings) (map? settings))
+             (or (nil? channels)
+                 (and (vector? channels)
+                      (every? #(and (string? %)
+                                    (news-archive/valid-channel? (str/replace % #"^#" ""))) channels))))
+      {:channels (vec (distinct (map #(str/replace % #"^#" "") channels)))}
+      {:channels [] :error "Invalid [:tui :news :channels]; use a vector of archive channel names."})))
+
 (defn groups
   "Returns configured project groups."
   [config]
@@ -187,7 +201,10 @@
        (when (seq (project-paths config))
          (str "\n\n  ;; Existing projects shown in Command Central.\n"
               (format-vector " " ":paths         " (project-paths config))))
-       "}}}\n"))
+       "}"
+       (when-let [news (get-in config [:tui :news])]
+         (str "\n  :news " (pr-str news)))
+       "}}\n"))
 
 (defn format-config-preview
   "Formats config as deterministic EDN without instructional comments."
