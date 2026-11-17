@@ -5,9 +5,24 @@
             [clojure.string :as str]
             [jus.tui.content :as content]
             [jus.tui.footer :as footer]
-            [jus.tui.style :as style]))
+            [jus.tui.style :as style])
+  (:import (java.time ZoneId)
+           (java.time.format DateTimeFormatter)
+           (java.util Locale)))
 
 (def steps #{:news-channels :news-reader})
+
+(def ^:private post-date-format
+  (DateTimeFormatter/ofPattern "MMM d, yyyy 'at' h:mm a z" Locale/ENGLISH))
+
+(defn- post-date [timestamp]
+  (.format (.withZone post-date-format (ZoneId/systemDefault)) timestamp))
+
+(defn- archive-link-lines [url width]
+  (let [label (str "View in archive" (if @style/windows-10? ">" "↗"))]
+    ;; Wrap plain text first so each displayed line, including its spaces,
+    ;; becomes one continuous underlined terminal link.
+    (mapv #(style/hyperlink % url) (style/helper-lines label width))))
 
 (declare status-text)
 
@@ -25,9 +40,9 @@
          (fn [index line] {:key [id index] :text line})
          (concat (style/helper-lines
                   (str (when (contains? (get-in state [:news :new-ids]) id) "NEW · ")
-                       timestamp " · " (or author "Unknown author")) width)
+                       (post-date timestamp) " · " (or author "Unknown author")) width)
                  (style/helper-lines text width)
-                 (style/helper-lines (str "[View in archive](" url ")") width)
+                 (archive-link-lines url width)
                  [""])))
       (get-in state [:news :messages channel])))))
 
